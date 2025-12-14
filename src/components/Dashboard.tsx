@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Activity,
   Server,
@@ -9,6 +9,7 @@ import {
   Check,
   ChevronDown,
   ChevronUp,
+  RefreshCw,
 } from "lucide-react";
 import {
   startServer,
@@ -20,6 +21,10 @@ import {
   ServerStatus,
   Config,
   TestResult,
+  getKiroCredentials,
+  checkAndReloadCredentials,
+  getTokenFileHash,
+  KiroCredentialStatus,
 } from "@/hooks/useTauri";
 
 interface TestState {
@@ -38,6 +43,14 @@ export function Dashboard() {
   const [testResults, setTestResults] = useState<Record<string, TestState>>({});
   const [copiedCmd, setCopiedCmd] = useState<string | null>(null);
   const [expandedTest, setExpandedTest] = useState<string | null>(null);
+
+  // Token sync state
+  const [kiroStatus, setKiroStatus] = useState<KiroCredentialStatus | null>(
+    null,
+  );
+  const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
+  const [lastCheckTime, setLastCheckTime] = useState<Date | null>(null);
+  const kiroHashRef = useRef<string>("");
 
   const fetchStatus = async () => {
     try {
@@ -60,9 +73,49 @@ export function Dashboard() {
   useEffect(() => {
     fetchStatus();
     fetchConfig();
-    const interval = setInterval(fetchStatus, 2000);
-    return () => clearInterval(interval);
+    loadKiroStatus();
+    initTokenHash();
+
+    const statusInterval = setInterval(fetchStatus, 2000);
+    const tokenInterval = setInterval(checkTokenFileChanges, 5000);
+
+    return () => {
+      clearInterval(statusInterval);
+      clearInterval(tokenInterval);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const initTokenHash = async () => {
+    try {
+      kiroHashRef.current = await getTokenFileHash();
+    } catch (e) {
+      console.error("Failed to get initial hash:", e);
+    }
+  };
+
+  const loadKiroStatus = async () => {
+    try {
+      const status = await getKiroCredentials();
+      setKiroStatus(status);
+    } catch (e) {
+      console.error("Failed to load Kiro status:", e);
+    }
+  };
+
+  const checkTokenFileChanges = async () => {
+    setLastCheckTime(new Date());
+    try {
+      const result = await checkAndReloadCredentials(kiroHashRef.current);
+      kiroHashRef.current = result.new_hash;
+      if (result.changed && result.reloaded) {
+        await loadKiroStatus();
+        setLastSyncTime(new Date());
+      }
+    } catch (e) {
+      console.error("Token check error:", e);
+    }
+  };
 
   const handleStart = async () => {
     setLoading(true);
@@ -278,6 +331,50 @@ export function Dashboard() {
             <span className="text-sm text-muted-foreground">当前 Provider</span>
           </div>
           <div className="mt-2 font-medium capitalize">Kiro</div>
+        </div>
+      </div>
+
+      {/* Token 同步状态 */}
+      <div className="rounded-lg border bg-card p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-semibold flex items-center gap-2">
+            <RefreshCw className="h-4 w-4" />
+            Token 同步状态
+          </h3>
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+            自动监测中 (5s)
+          </div>
+        </div>
+        <div className="grid grid-cols-4 gap-4 text-sm">
+          <div>
+            <span className="text-muted-foreground">Token 状态:</span>
+            <span
+              className={`ml-2 ${kiroStatus?.has_access_token ? "text-green-600" : "text-red-500"}`}
+            >
+              {kiroStatus?.has_access_token ? "✓ 已加载" : "✗ 未加载"}
+            </span>
+          </div>
+          <div>
+            <span className="text-muted-foreground">Refresh Token:</span>
+            <span
+              className={`ml-2 ${kiroStatus?.has_refresh_token ? "text-green-600" : "text-red-500"}`}
+            >
+              {kiroStatus?.has_refresh_token ? "✓ 可用" : "✗ 不可用"}
+            </span>
+          </div>
+          <div>
+            <span className="text-muted-foreground">最后同步:</span>
+            <span className="ml-2">
+              {lastSyncTime ? lastSyncTime.toLocaleTimeString() : "从未同步"}
+            </span>
+          </div>
+          <div>
+            <span className="text-muted-foreground">最后检测:</span>
+            <span className="ml-2">
+              {lastCheckTime ? lastCheckTime.toLocaleTimeString() : "-"}
+            </span>
+          </div>
         </div>
       </div>
 

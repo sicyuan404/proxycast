@@ -104,12 +104,14 @@ export function Providers() {
   );
   const [kiroEnvVars, setKiroEnvVars] = useState<EnvVariable[]>([]);
   const kiroHashRef = useRef<string>("");
+  const [kiroLastSync, setKiroLastSync] = useState<Date | null>(null);
 
   // Gemini state
   const [geminiStatus, setGeminiStatus] =
     useState<GeminiCredentialStatus | null>(null);
   const [geminiEnvVars, setGeminiEnvVars] = useState<EnvVariable[]>([]);
   const geminiHashRef = useRef<string>("");
+  const [geminiLastSync, setGeminiLastSync] = useState<Date | null>(null);
 
   // Qwen state
   const [qwenStatus, setQwenStatus] = useState<QwenCredentialStatus | null>(
@@ -117,6 +119,10 @@ export function Providers() {
   );
   const [qwenEnvVars, setQwenEnvVars] = useState<EnvVariable[]>([]);
   const qwenHashRef = useRef<string>("");
+  const [qwenLastSync, setQwenLastSync] = useState<Date | null>(null);
+
+  // Last check time (used for display)
+  const [_lastCheckTime, setLastCheckTime] = useState<Date | null>(null);
 
   // OpenAI Custom state
   const [openaiStatus, setOpenaiStatus] = useState<OpenAICustomStatus | null>(
@@ -176,12 +182,15 @@ export function Providers() {
   }, []);
 
   const checkFileChanges = async () => {
+    setLastCheckTime(new Date());
+
     // Check Kiro
     try {
       const kiroResult = await checkAndReloadCredentials(kiroHashRef.current);
       kiroHashRef.current = kiroResult.new_hash;
       if (kiroResult.changed && kiroResult.reloaded) {
         await loadKiroStatus();
+        setKiroLastSync(new Date());
         setMessage({
           type: "success",
           text: "[Kiro] 检测到凭证文件变化，已自动重新加载",
@@ -200,6 +209,7 @@ export function Providers() {
       geminiHashRef.current = geminiResult.new_hash;
       if (geminiResult.changed && geminiResult.reloaded) {
         await loadGeminiStatus();
+        setGeminiLastSync(new Date());
         setMessage({
           type: "success",
           text: "[Gemini] 检测到凭证文件变化，已自动重新加载",
@@ -218,6 +228,7 @@ export function Providers() {
       qwenHashRef.current = qwenResult.new_hash;
       if (qwenResult.changed && qwenResult.reloaded) {
         await loadQwenStatus();
+        setQwenLastSync(new Date());
         setMessage({
           type: "success",
           text: "[Qwen] 检测到凭证文件变化，已自动重新加载",
@@ -336,14 +347,17 @@ export function Providers() {
         await reloadCredentials();
         await loadKiroStatus();
         kiroHashRef.current = await getTokenFileHash();
+        setKiroLastSync(new Date());
       } else if (provider === "gemini") {
         await reloadGeminiCredentials();
         await loadGeminiStatus();
         geminiHashRef.current = await getGeminiTokenFileHash();
+        setGeminiLastSync(new Date());
       } else if (provider === "qwen") {
         await reloadQwenCredentials();
         await loadQwenStatus();
         qwenHashRef.current = await getQwenTokenFileHash();
+        setQwenLastSync(new Date());
       }
       setMessage({ type: "success", text: `[${provider}] 凭证加载成功！` });
     } catch (e: any) {
@@ -470,6 +484,11 @@ export function Providers() {
     }
   };
 
+  const formatTime = (date: Date | null) => {
+    if (!date) return "从未同步";
+    return date.toLocaleTimeString();
+  };
+
   const currentEnvVars =
     activeProvider === "kiro"
       ? kiroEnvVars
@@ -529,7 +548,21 @@ export function Providers() {
       {/* Kiro Panel */}
       {activeProvider === "kiro" && (
         <div className="rounded-lg border bg-card p-4">
-          <h3 className="mb-3 font-semibold">Kiro 凭证状态</h3>
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="font-semibold">Kiro 凭证状态</h3>
+            <div className="flex items-center gap-4 text-xs text-muted-foreground">
+              <span>
+                最后同步:{" "}
+                <span className="text-foreground">
+                  {formatTime(kiroLastSync)}
+                </span>
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                监测中 (5s)
+              </span>
+            </div>
+          </div>
           <div className="mb-4 grid grid-cols-2 gap-4 text-sm">
             <div>
               <span className="text-muted-foreground">凭证路径:</span>
@@ -592,7 +625,21 @@ export function Providers() {
       {/* Gemini Panel */}
       {activeProvider === "gemini" && (
         <div className="rounded-lg border bg-card p-4">
-          <h3 className="mb-3 font-semibold">Gemini CLI 凭证状态</h3>
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="font-semibold">Gemini CLI 凭证状态</h3>
+            <div className="flex items-center gap-4 text-xs text-muted-foreground">
+              <span>
+                最后同步:{" "}
+                <span className="text-foreground">
+                  {formatTime(geminiLastSync)}
+                </span>
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                监测中 (5s)
+              </span>
+            </div>
+          </div>
           <div className="mb-4 grid grid-cols-2 gap-4 text-sm">
             <div>
               <span className="text-muted-foreground">凭证路径:</span>
@@ -658,7 +705,21 @@ export function Providers() {
       {/* Qwen Panel */}
       {activeProvider === "qwen" && (
         <div className="rounded-lg border bg-card p-4">
-          <h3 className="mb-3 font-semibold">通义千问凭证状态</h3>
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="font-semibold">通义千问凭证状态</h3>
+            <div className="flex items-center gap-4 text-xs text-muted-foreground">
+              <span>
+                最后同步:{" "}
+                <span className="text-foreground">
+                  {formatTime(qwenLastSync)}
+                </span>
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                监测中 (5s)
+              </span>
+            </div>
+          </div>
           <div className="mb-4 grid grid-cols-2 gap-4 text-sm">
             <div>
               <span className="text-muted-foreground">凭证路径:</span>
