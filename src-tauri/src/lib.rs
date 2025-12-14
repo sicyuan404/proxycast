@@ -12,6 +12,9 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
+use commands::skill_cmd::SkillServiceState;
+use services::skill_service::SkillService;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ProviderType {
@@ -1262,6 +1265,17 @@ pub fn run() {
     // Initialize database for Switch functionality
     let db = database::init_database().expect("Failed to initialize database");
 
+    // Initialize SkillService
+    let skill_service = SkillService::new().expect("Failed to initialize SkillService");
+    let skill_service_state = SkillServiceState(Arc::new(skill_service));
+
+    // Initialize default skill repos
+    {
+        let conn = db.lock().expect("Failed to lock database");
+        database::dao::skills::SkillDao::init_default_skill_repos(&conn)
+            .expect("Failed to initialize default skill repos");
+    }
+
     // Clone for setup hook
     let state_clone = state.clone();
     let logs_clone = logs.clone();
@@ -1275,6 +1289,7 @@ pub fn run() {
         .manage(state)
         .manage(logs)
         .manage(db)
+        .manage(skill_service_state)
         .setup(move |_app| {
             // 自动启动服务器
             let state = state_clone.clone();
@@ -1400,6 +1415,16 @@ pub fn run() {
             commands::prompt_cmd::get_current_prompt_file_content,
             commands::prompt_cmd::auto_import_prompt,
             commands::prompt_cmd::switch_prompt,
+            // Skill commands
+            commands::skill_cmd::get_skills,
+            commands::skill_cmd::get_skills_for_app,
+            commands::skill_cmd::install_skill,
+            commands::skill_cmd::install_skill_for_app,
+            commands::skill_cmd::uninstall_skill,
+            commands::skill_cmd::uninstall_skill_for_app,
+            commands::skill_cmd::get_skill_repos,
+            commands::skill_cmd::add_skill_repo,
+            commands::skill_cmd::remove_skill_repo,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

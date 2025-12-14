@@ -1,6 +1,6 @@
 [package]
 name = "proxycast"
-version = "0.5.2"
+version = "0.6.0"
 description = "AI API Proxy Desktop App"
 authors = ["you"]
 edition = "2021"
@@ -32,6 +32,10 @@ regex = "1"
 md5 = "0.7"
 urlencoding = "2"
 rusqlite = { version = "0.31", features = ["bundled"] }
+serde_yaml = "0.9"
+indexmap = { version = "2", features = ["serde"] }
+zip = "0.6"
+anyhow = "1"
 
 [features]
 default = ["custom-protocol"]

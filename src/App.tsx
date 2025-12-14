@@ -9,6 +9,7 @@ import { McpPage } from "./components/mcp";
 import { PromptsPage } from "./components/prompts";
 import { CredentialsPage } from "./components/credentials/CredentialsPage";
 import { ApiServerPage } from "./components/api-server/ApiServerPage";
+import { SkillsPage } from "./components/skills";
 
 type Page =
   | "dashboard"
@@ -19,7 +20,8 @@ type Page =
   | "settings"
   | "switch"
   | "mcp"
-  | "prompts";
+  | "prompts"
+  | "skills";
 
 function App() {
   const [currentPage, setCurrentPage] = useState<Page>("dashboard");
@@ -44,6 +46,8 @@ function App() {
         return <McpPage />;
       case "prompts":
         return <PromptsPage />;
+      case "skills":
+        return <SkillsPage />;
       default:
         return <Dashboard />;
     }

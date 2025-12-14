@@ -70,5 +70,29 @@ pub fn create_tables(conn: &Connection) -> Result<(), rusqlite::Error> {
         [],
     )?;
 
+    // Skills 表
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS skills (
+            directory TEXT NOT NULL,
+            app_type TEXT NOT NULL,
+            installed INTEGER NOT NULL DEFAULT 0,
+            installed_at INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (directory, app_type)
+        )",
+        [],
+    )?;
+
+    // Skill Repos 表
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS skill_repos (
+            owner TEXT NOT NULL,
+            name TEXT NOT NULL,
+            branch TEXT NOT NULL DEFAULT 'main',
+            enabled INTEGER NOT NULL DEFAULT 1,
+            PRIMARY KEY (owner, name)
+        )",
+        [],
+    )?;
+
     Ok(())
 }

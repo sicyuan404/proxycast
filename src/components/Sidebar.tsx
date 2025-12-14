@@ -6,6 +6,7 @@ import {
   Key,
   Monitor,
   Globe,
+  Boxes,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -18,7 +19,8 @@ type Page =
   | "settings"
   | "switch"
   | "mcp"
-  | "prompts";
+  | "prompts"
+  | "skills";
 
 interface SidebarProps {
   currentPage: Page;
@@ -32,6 +34,7 @@ const navItems = [
   { id: "api-server" as Page, label: "API Server", icon: Globe },
   { id: "mcp" as Page, label: "MCP", icon: Plug },
   { id: "prompts" as Page, label: "Prompts", icon: MessageSquare },
+  { id: "skills" as Page, label: "Skills", icon: Boxes },
   { id: "settings" as Page, label: "设置", icon: Settings },
   // Legacy pages (hidden but accessible)
   // { id: "providers" as Page, label: "Provider (旧)", icon: Server },

@@ -5,6 +5,7 @@ pub mod mcp_model;
 pub mod openai;
 pub mod prompt_model;
 pub mod provider_model;
+pub mod skill_model;
 
 #[allow(unused_imports)]
 pub use anthropic::*;
@@ -16,3 +17,4 @@ pub use mcp_model::McpServer;
 pub use openai::*;
 pub use prompt_model::Prompt;
 pub use provider_model::Provider;
+pub use skill_model::{Skill, SkillMetadata, SkillRepo, SkillState, SkillStates};
