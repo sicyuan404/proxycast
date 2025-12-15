@@ -43,11 +43,7 @@ impl TokenCacheService {
     /// 1. 检查数据库缓存是否有效
     /// 2. 如果缓存有效且未过期，直接返回
     /// 3. 如果缓存无效或即将过期，执行刷新
-    pub async fn get_valid_token(
-        &self,
-        db: &DbConnection,
-        uuid: &str,
-    ) -> Result<String, String> {
+    pub async fn get_valid_token(&self, db: &DbConnection, uuid: &str) -> Result<String, String> {
         // 首先检查缓存
         let cached = {
             let conn = db.lock().map_err(|e| e.to_string())?;
@@ -153,7 +149,11 @@ impl TokenCacheService {
                     let _ = ProviderPoolDao::record_token_refresh_error(&conn, uuid, &e);
                 }
 
-                tracing::error!("[TOKEN_CACHE] Token refresh failed for {}: {}", &uuid[..8], e);
+                tracing::error!(
+                    "[TOKEN_CACHE] Token refresh failed for {}: {}",
+                    &uuid[..8],
+                    e
+                );
 
                 Err(e)
             }
@@ -172,6 +172,9 @@ impl TokenCacheService {
             CredentialData::QwenOAuth { creds_file_path } => {
                 self.refresh_qwen(creds_file_path).await
             }
+            CredentialData::AntigravityOAuth {
+                creds_file_path, ..
+            } => self.refresh_antigravity(creds_file_path).await,
             CredentialData::OpenAIKey { api_key, .. } => {
                 // API Key 不需要刷新，直接返回
                 Ok(CachedTokenInfo {
@@ -283,6 +286,38 @@ impl TokenCacheService {
         })
     }
 
+    /// 刷新 Antigravity Token
+    async fn refresh_antigravity(&self, creds_path: &str) -> Result<CachedTokenInfo, String> {
+        use crate::providers::antigravity::AntigravityProvider;
+
+        let mut provider = AntigravityProvider::new();
+        provider
+            .load_credentials_from_path(creds_path)
+            .await
+            .map_err(|e| format!("加载 Antigravity 凭证失败: {}", e))?;
+
+        let token = provider
+            .refresh_token()
+            .await
+            .map_err(|e| format!("刷新 Antigravity Token 失败: {}", e))?;
+
+        // Antigravity token 通常 1 小时过期
+        let expiry_time = provider
+            .credentials
+            .expiry_date
+            .map(|ts| chrono::DateTime::from_timestamp_millis(ts).unwrap_or_default())
+            .unwrap_or_else(|| Utc::now() + chrono::Duration::minutes(50));
+
+        Ok(CachedTokenInfo {
+            access_token: Some(token),
+            refresh_token: provider.credentials.refresh_token.clone(),
+            expiry_time: Some(expiry_time),
+            last_refresh: Some(Utc::now()),
+            refresh_error_count: 0,
+            last_refresh_error: None,
+        })
+    }
+
     /// 从源文件加载初始 Token（首次使用时）
     pub async fn load_initial_token(
         &self,
@@ -370,6 +405,30 @@ impl TokenCacheService {
                 let content = tokio::fs::read_to_string(creds_file_path)
                     .await
                     .map_err(|e| format!("读取 Qwen 凭证文件失败: {}", e))?;
+                let creds: serde_json::Value =
+                    serde_json::from_str(&content).map_err(|e| format!("解析凭证失败: {}", e))?;
+
+                let access_token = creds["access_token"].as_str().map(|s| s.to_string());
+                let refresh_token = creds["refresh_token"].as_str().map(|s| s.to_string());
+                let expiry_time = creds["expiry_date"]
+                    .as_i64()
+                    .and_then(|ts| chrono::DateTime::from_timestamp(ts, 0));
+
+                Ok(CachedTokenInfo {
+                    access_token,
+                    refresh_token,
+                    expiry_time,
+                    last_refresh: None,
+                    refresh_error_count: 0,
+                    last_refresh_error: None,
+                })
+            }
+            CredentialData::AntigravityOAuth {
+                creds_file_path, ..
+            } => {
+                let content = tokio::fs::read_to_string(creds_file_path)
+                    .await
+                    .map_err(|e| format!("读取 Antigravity 凭证文件失败: {}", e))?;
                 let creds: serde_json::Value =
                     serde_json::from_str(&content).map_err(|e| format!("解析凭证失败: {}", e))?;
 

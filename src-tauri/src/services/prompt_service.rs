@@ -6,6 +6,7 @@ use std::collections::HashMap;
 
 pub struct PromptService;
 
+#[allow(dead_code)]
 impl PromptService {
     /// Get all prompts for an app type
     pub fn get_all(db: &DbConnection, app_type: &str) -> Result<Vec<Prompt>, String> {

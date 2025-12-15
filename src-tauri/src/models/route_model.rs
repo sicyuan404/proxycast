@@ -85,7 +85,7 @@ impl RouteInfo {
         let mut examples = Vec::new();
 
         for endpoint in &self.endpoints {
-            let (model, body) = match endpoint.protocol.as_str() {
+            let (_model, body) = match endpoint.protocol.as_str() {
                 "claude" => {
                     let model = match self.provider_type.as_str() {
                         "kiro" | "claude" => "claude-sonnet-4-5",
@@ -94,11 +94,17 @@ impl RouteInfo {
                         "openai" => "gpt-4",
                         _ => "claude-sonnet-4-5",
                     };
-                    (model, format!(r#"{{
+                    (
+                        model,
+                        format!(
+                            r#"{{
   "model": "{}",
   "max_tokens": 1024,
   "messages": [{{"role": "user", "content": "Hello!"}}]
-}}"#, model))
+}}"#,
+                            model
+                        ),
+                    )
                 }
                 "openai" => {
                     let model = match self.provider_type.as_str() {
@@ -108,10 +114,16 @@ impl RouteInfo {
                         "openai" => "gpt-4",
                         _ => "claude-sonnet-4-5",
                     };
-                    (model, format!(r#"{{
+                    (
+                        model,
+                        format!(
+                            r#"{{
   "model": "{}",
   "messages": [{{"role": "user", "content": "Hello!"}}]
-}}"#, model))
+}}"#,
+                            model
+                        ),
+                    )
                 }
                 _ => continue,
             };

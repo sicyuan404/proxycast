@@ -1,7 +1,13 @@
 import { invoke } from "@tauri-apps/api/core";
 
 // Provider types supported by the pool
-export type PoolProviderType = "kiro" | "gemini" | "qwen" | "openai" | "claude";
+export type PoolProviderType =
+  | "kiro"
+  | "gemini"
+  | "qwen"
+  | "antigravity"
+  | "openai"
+  | "claude";
 
 // Credential data types
 export interface KiroOAuthCredential {
@@ -20,6 +26,12 @@ export interface QwenOAuthCredential {
   creds_file_path: string;
 }
 
+export interface AntigravityOAuthCredential {
+  type: "antigravity_oauth";
+  creds_file_path: string;
+  project_id?: string;
+}
+
 export interface OpenAIKeyCredential {
   type: "openai_key";
   api_key: string;
@@ -36,6 +48,7 @@ export type CredentialData =
   | KiroOAuthCredential
   | GeminiOAuthCredential
   | QwenOAuthCredential
+  | AntigravityOAuthCredential
   | OpenAIKeyCredential
   | ClaudeKeyCredential;
 
@@ -257,6 +270,18 @@ export const providerPoolApi = {
     name?: string,
   ): Promise<ProviderCredential> {
     return invoke("add_claude_key_credential", { apiKey, baseUrl, name });
+  },
+
+  async addAntigravityOAuth(
+    credsFilePath: string,
+    projectId?: string,
+    name?: string,
+  ): Promise<ProviderCredential> {
+    return invoke("add_antigravity_oauth_credential", {
+      credsFilePath,
+      projectId,
+      name,
+    });
   },
 
   // OAuth token management

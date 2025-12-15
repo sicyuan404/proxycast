@@ -3,6 +3,7 @@ use serde_json::{json, Value};
 use std::path::PathBuf;
 
 /// Get the configuration file path for an app type
+#[allow(dead_code)]
 pub fn get_app_config_path(app_type: &AppType) -> Option<PathBuf> {
     let home = dirs::home_dir()?;
     match app_type {

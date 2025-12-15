@@ -48,7 +48,9 @@ impl ProviderPoolDao {
              ORDER BY created_at ASC",
         )?;
 
-        let rows = stmt.query_map([provider_type.to_string()], |row| Self::row_to_credential(row))?;
+        let rows = stmt.query_map([provider_type.to_string()], |row| {
+            Self::row_to_credential(row)
+        })?;
 
         let mut credentials = Vec::new();
         for row in rows {
@@ -245,7 +247,12 @@ impl ProviderPoolDao {
             "UPDATE provider_pool_credentials SET
              usage_count = ?2, last_used = ?3, updated_at = ?4
              WHERE uuid = ?1",
-            params![uuid, usage_count, last_used.timestamp(), Utc::now().timestamp()],
+            params![
+                uuid,
+                usage_count,
+                last_used.timestamp(),
+                Utc::now().timestamp()
+            ],
         )?;
         Ok(())
     }
@@ -298,16 +305,11 @@ impl ProviderPoolDao {
         let created_at_ts: i64 = row.get(16)?;
         let updated_at_ts: i64 = row.get(17)?;
 
-        let provider_type: PoolProviderType = provider_type_str
-            .parse()
-            .unwrap_or(PoolProviderType::Kiro);
+        let provider_type: PoolProviderType =
+            provider_type_str.parse().unwrap_or(PoolProviderType::Kiro);
 
         let credential: CredentialData = serde_json::from_str(&credential_json).map_err(|e| {
-            rusqlite::Error::FromSqlConversionFailure(
-                2,
-                rusqlite::types::Type::Text,
-                Box::new(e),
-            )
+            rusqlite::Error::FromSqlConversionFailure(2, rusqlite::types::Type::Text, Box::new(e))
         })?;
 
         let not_supported_models: Vec<String> = not_supported_models_json
@@ -332,8 +334,14 @@ impl ProviderPoolDao {
             last_health_check_time: last_health_check_time_ts
                 .and_then(|ts| Utc.timestamp_opt(ts, 0).single()),
             last_health_check_model,
-            created_at: Utc.timestamp_opt(created_at_ts, 0).single().unwrap_or_default(),
-            updated_at: Utc.timestamp_opt(updated_at_ts, 0).single().unwrap_or_default(),
+            created_at: Utc
+                .timestamp_opt(created_at_ts, 0)
+                .single()
+                .unwrap_or_default(),
+            updated_at: Utc
+                .timestamp_opt(updated_at_ts, 0)
+                .single()
+                .unwrap_or_default(),
             cached_token: None, // 从 get_token_cache 单独获取
         })
     }
@@ -452,7 +460,11 @@ impl ProviderPoolDao {
     }
 
     /// 重置 Token 刷新错误计数
-    pub fn reset_token_refresh_errors(conn: &Connection, uuid: &str) -> Result<(), rusqlite::Error> {
+    #[allow(dead_code)]
+    pub fn reset_token_refresh_errors(
+        conn: &Connection,
+        uuid: &str,
+    ) -> Result<(), rusqlite::Error> {
         conn.execute(
             "UPDATE provider_pool_credentials SET
              refresh_error_count = 0,

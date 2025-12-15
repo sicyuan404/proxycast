@@ -5,6 +5,7 @@ mod database;
 mod logger;
 mod models;
 mod providers;
+mod router;
 mod server;
 mod services;
 
@@ -30,6 +31,7 @@ pub enum ProviderType {
     #[serde(rename = "openai")]
     OpenAI,
     Claude,
+    Antigravity,
 }
 
 impl std::fmt::Display for ProviderType {
@@ -40,6 +42,7 @@ impl std::fmt::Display for ProviderType {
             ProviderType::Qwen => write!(f, "qwen"),
             ProviderType::OpenAI => write!(f, "openai"),
             ProviderType::Claude => write!(f, "claude"),
+            ProviderType::Antigravity => write!(f, "antigravity"),
         }
     }
 }
@@ -54,6 +57,7 @@ impl std::str::FromStr for ProviderType {
             "qwen" => Ok(ProviderType::Qwen),
             "openai" => Ok(ProviderType::OpenAI),
             "claude" => Ok(ProviderType::Claude),
+            "antigravity" => Ok(ProviderType::Antigravity),
             _ => Err(format!("Invalid provider: {s}")),
         }
     }
@@ -944,6 +948,10 @@ async fn check_api_compatibility(
             ("qwen3-coder-plus", "basic"),
             ("qwen3-coder-plus", "tool_call"),
         ],
+        ProviderType::Antigravity => vec![
+            ("gemini-3-pro-preview", "basic"),
+            ("gemini-3-pro-preview", "tool_call"),
+        ],
         ProviderType::OpenAI | ProviderType::Claude => vec![],
     };
 
@@ -1343,7 +1351,10 @@ pub fn run() {
                     logs.write()
                         .await
                         .add("info", "[启动] 正在自动启动服务器...");
-                    match s.start(logs.clone(), pool_service, token_cache, Some(db)).await {
+                    match s
+                        .start(logs.clone(), pool_service, token_cache, Some(db))
+                        .await
+                    {
                         Ok(_) => {
                             let host = s.config.server.host.clone();
                             let port = s.config.server.port;
@@ -1470,6 +1481,7 @@ pub fn run() {
             commands::provider_pool_cmd::add_kiro_oauth_credential,
             commands::provider_pool_cmd::add_gemini_oauth_credential,
             commands::provider_pool_cmd::add_qwen_oauth_credential,
+            commands::provider_pool_cmd::add_antigravity_oauth_credential,
             commands::provider_pool_cmd::add_openai_key_credential,
             commands::provider_pool_cmd::add_claude_key_credential,
             commands::provider_pool_cmd::refresh_pool_credential_token,

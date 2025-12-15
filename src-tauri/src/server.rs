@@ -1,11 +1,15 @@
 //! HTTP API 服务器
 use crate::config::Config;
 use crate::converter::anthropic_to_openai::convert_anthropic_to_openai;
+use crate::converter::openai_to_antigravity::{
+    convert_antigravity_to_openai_response, convert_openai_to_antigravity,
+};
 use crate::database::DbConnection;
 use crate::logger::LogStore;
 use crate::models::anthropic::*;
 use crate::models::openai::*;
 use crate::models::route_model::{RouteInfo, RouteListResponse};
+use crate::providers::antigravity::AntigravityProvider;
 use crate::providers::claude_custom::ClaudeCustomProvider;
 use crate::providers::gemini::GeminiProvider;
 use crate::providers::kiro::KiroProvider;
@@ -113,7 +117,19 @@ impl ServerState {
         let kiro = self.kiro_provider.clone();
 
         tokio::spawn(async move {
-            if let Err(e) = run_server(&host, port, &api_key, kiro, logs, rx, pool_service, token_cache, db).await {
+            if let Err(e) = run_server(
+                &host,
+                port,
+                &api_key,
+                kiro,
+                logs,
+                rx,
+                pool_service,
+                token_cache,
+                db,
+            )
+            .await
+            {
                 tracing::error!("Server error: {}", e);
             }
         });
@@ -190,8 +206,14 @@ async fn run_server(
         .route("/v1/messages", post(anthropic_messages))
         .route("/v1/messages/count_tokens", post(count_tokens))
         // 多供应商路由
-        .route("/{selector}/v1/messages", post(anthropic_messages_with_selector))
-        .route("/{selector}/v1/chat/completions", post(chat_completions_with_selector))
+        .route(
+            "/:selector/v1/messages",
+            post(anthropic_messages_with_selector),
+        )
+        .route(
+            "/:selector/v1/chat/completions",
+            post(chat_completions_with_selector),
+        )
         .with_state(state);
 
     let addr: std::net::SocketAddr = format!("{host}:{port}").parse()?;
@@ -1384,11 +1406,10 @@ async fn anthropic_messages_with_selector(
     Json(request): Json<AnthropicMessagesRequest>,
 ) -> Response {
     if let Err(e) = verify_api_key(&headers, &state.api_key).await {
-        state
-            .logs
-            .write()
-            .await
-            .add("warn", &format!("Unauthorized request to /{}/v1/messages", selector));
+        state.logs.write().await.add(
+            "warn",
+            &format!("Unauthorized request to /{}/v1/messages", selector),
+        );
         return e.into_response();
     }
 
@@ -1412,9 +1433,10 @@ async fn anthropic_messages_with_selector(
                 Some(cred)
             }
             // 最后尝试按 provider 类型轮询
-            else if let Ok(Some(cred)) = state
-                .pool_service
-                .select_credential(db, &selector, Some(&request.model))
+            else if let Ok(Some(cred)) =
+                state
+                    .pool_service
+                    .select_credential(db, &selector, Some(&request.model))
             {
                 Some(cred)
             } else {
@@ -1462,11 +1484,10 @@ async fn chat_completions_with_selector(
     Json(request): Json<ChatCompletionRequest>,
 ) -> Response {
     if let Err(e) = verify_api_key(&headers, &state.api_key).await {
-        state
-            .logs
-            .write()
-            .await
-            .add("warn", &format!("Unauthorized request to /{}/v1/chat/completions", selector));
+        state.logs.write().await.add(
+            "warn",
+            &format!("Unauthorized request to /{}/v1/chat/completions", selector),
+        );
         return e.into_response();
     }
 
@@ -1485,9 +1506,10 @@ async fn chat_completions_with_selector(
                 Some(cred)
             } else if let Ok(Some(cred)) = state.pool_service.get_by_uuid(db, &selector) {
                 Some(cred)
-            } else if let Ok(Some(cred)) = state
-                .pool_service
-                .select_credential(db, &selector, Some(&request.model))
+            } else if let Ok(Some(cred)) =
+                state
+                    .pool_service
+                    .select_credential(db, &selector, Some(&request.model))
             {
                 Some(cred)
             } else {
@@ -1708,7 +1730,11 @@ async fn call_provider_anthropic(
             };
 
             // 获取缓存的 token
-            let token = match state.token_cache.get_valid_token(db, &credential.uuid).await {
+            let token = match state
+                .token_cache
+                .get_valid_token(db, &credential.uuid)
+                .await
+            {
                 Ok(t) => t,
                 Err(e) => {
                     tracing::warn!("[POOL] Token cache miss, loading from source: {}", e);
@@ -1770,9 +1796,17 @@ async fn call_provider_anthropic(
                 }
             } else if status.as_u16() == 401 || status.as_u16() == 403 {
                 // Token 过期，强制刷新并重试
-                tracing::info!("[POOL] Got {}, forcing token refresh for {}", status, &credential.uuid[..8]);
+                tracing::info!(
+                    "[POOL] Got {}, forcing token refresh for {}",
+                    status,
+                    &credential.uuid[..8]
+                );
 
-                let new_token = match state.token_cache.refresh_and_cache(db, &credential.uuid, true).await {
+                let new_token = match state
+                    .token_cache
+                    .refresh_and_cache(db, &credential.uuid, true)
+                    .await
+                {
                     Ok(t) => t,
                     Err(e) => {
                         return (
@@ -1844,6 +1878,72 @@ async fn call_provider_anthropic(
             )
                 .into_response()
         }
+        CredentialData::AntigravityOAuth {
+            creds_file_path,
+            project_id,
+        } => {
+            let mut antigravity = AntigravityProvider::new();
+            if let Err(e) = antigravity
+                .load_credentials_from_path(creds_file_path)
+                .await
+            {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({"error": {"message": format!("Failed to load Antigravity credentials: {}", e)}})),
+                )
+                    .into_response();
+            }
+
+            // 检查并刷新 token
+            if antigravity.is_token_expiring_soon() {
+                if let Err(e) = antigravity.refresh_token().await {
+                    return (
+                        StatusCode::UNAUTHORIZED,
+                        Json(serde_json::json!({"error": {"message": format!("Token refresh failed: {}", e)}})),
+                    )
+                        .into_response();
+                }
+            }
+
+            // 设置项目 ID
+            if let Some(pid) = project_id {
+                antigravity.project_id = Some(pid.clone());
+            } else if let Err(e) = antigravity.discover_project().await {
+                tracing::warn!("[Antigravity] Failed to discover project: {}", e);
+            }
+
+            // 先转换为 OpenAI 格式，再转换为 Antigravity 格式
+            let openai_request = convert_anthropic_to_openai(request);
+            let antigravity_request = convert_openai_to_antigravity(&openai_request);
+
+            match antigravity
+                .generate_content(&request.model, &antigravity_request)
+                .await
+            {
+                Ok(resp) => {
+                    // 转换为 OpenAI 格式，再构建 Anthropic 响应
+                    let content = resp["candidates"][0]["content"]["parts"][0]["text"]
+                        .as_str()
+                        .unwrap_or("");
+                    let parsed = CWParsedResponse {
+                        content: content.to_string(),
+                        tool_calls: Vec::new(),
+                        usage_credits: 0.0,
+                        context_usage_percentage: 0.0,
+                    };
+                    if request.stream {
+                        build_anthropic_stream_response(&request.model, &parsed)
+                    } else {
+                        build_anthropic_response(&request.model, &parsed)
+                    }
+                }
+                Err(e) => (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({"error": {"message": e.to_string()}})),
+                )
+                    .into_response(),
+            }
+        }
         CredentialData::OpenAIKey { api_key, base_url } => {
             let openai = OpenAICustomProvider::with_config(api_key.clone(), base_url.clone());
             let openai_request = convert_anthropic_to_openai(request);
@@ -1852,7 +1952,9 @@ async fn call_provider_anthropic(
                     if resp.status().is_success() {
                         match resp.text().await {
                             Ok(body) => {
-                                if let Ok(openai_resp) = serde_json::from_str::<serde_json::Value>(&body) {
+                                if let Ok(openai_resp) =
+                                    serde_json::from_str::<serde_json::Value>(&body)
+                                {
                                     let content = openai_resp["choices"][0]["message"]["content"]
                                         .as_str()
                                         .unwrap_or("");
@@ -2052,6 +2154,49 @@ async fn call_provider_openai(
                 Json(serde_json::json!({"error": {"message": "Qwen OAuth routing not yet implemented."}})),
             )
                 .into_response()
+        }
+        CredentialData::AntigravityOAuth { creds_file_path, project_id } => {
+            let mut antigravity = AntigravityProvider::new();
+            if let Err(e) = antigravity.load_credentials_from_path(creds_file_path).await {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({"error": {"message": format!("Failed to load Antigravity credentials: {}", e)}})),
+                )
+                    .into_response();
+            }
+
+            // 检查并刷新 token
+            if antigravity.is_token_expiring_soon() {
+                if let Err(e) = antigravity.refresh_token().await {
+                    return (
+                        StatusCode::UNAUTHORIZED,
+                        Json(serde_json::json!({"error": {"message": format!("Token refresh failed: {}", e)}})),
+                    )
+                        .into_response();
+                }
+            }
+
+            // 设置项目 ID
+            if let Some(pid) = project_id {
+                antigravity.project_id = Some(pid.clone());
+            } else if let Err(e) = antigravity.discover_project().await {
+                tracing::warn!("[Antigravity] Failed to discover project: {}", e);
+            }
+
+            // 转换请求格式
+            let antigravity_request = convert_openai_to_antigravity(request);
+
+            match antigravity.generate_content(&request.model, &antigravity_request).await {
+                Ok(resp) => {
+                    let openai_response = convert_antigravity_to_openai_response(&resp, &request.model);
+                    Json(openai_response).into_response()
+                }
+                Err(e) => (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({"error": {"message": e.to_string()}})),
+                )
+                    .into_response(),
+            }
         }
         CredentialData::OpenAIKey { api_key, base_url } => {
             let openai = OpenAICustomProvider::with_config(api_key.clone(), base_url.clone());

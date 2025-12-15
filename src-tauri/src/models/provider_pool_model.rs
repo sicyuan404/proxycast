@@ -17,6 +17,7 @@ pub enum PoolProviderType {
     #[serde(rename = "openai")]
     OpenAI,
     Claude,
+    Antigravity,
 }
 
 impl std::fmt::Display for PoolProviderType {
@@ -27,6 +28,7 @@ impl std::fmt::Display for PoolProviderType {
             PoolProviderType::Qwen => write!(f, "qwen"),
             PoolProviderType::OpenAI => write!(f, "openai"),
             PoolProviderType::Claude => write!(f, "claude"),
+            PoolProviderType::Antigravity => write!(f, "antigravity"),
         }
     }
 }
@@ -41,6 +43,7 @@ impl std::str::FromStr for PoolProviderType {
             "qwen" => Ok(PoolProviderType::Qwen),
             "openai" => Ok(PoolProviderType::OpenAI),
             "claude" => Ok(PoolProviderType::Claude),
+            "antigravity" => Ok(PoolProviderType::Antigravity),
             _ => Err(format!("Invalid provider type: {s}")),
         }
     }
@@ -51,17 +54,18 @@ impl std::str::FromStr for PoolProviderType {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum CredentialData {
     /// Kiro OAuth 凭证（文件路径）
-    KiroOAuth {
-        creds_file_path: String,
-    },
+    KiroOAuth { creds_file_path: String },
     /// Gemini OAuth 凭证（文件路径）
     GeminiOAuth {
         creds_file_path: String,
         project_id: Option<String>,
     },
     /// Qwen OAuth 凭证（文件路径）
-    QwenOAuth {
+    QwenOAuth { creds_file_path: String },
+    /// Antigravity OAuth 凭证（文件路径）- Google 内部 Gemini 3 Pro
+    AntigravityOAuth {
         creds_file_path: String,
+        project_id: Option<String>,
     },
     /// OpenAI API Key 凭证
     OpenAIKey {
@@ -90,6 +94,11 @@ impl CredentialData {
             CredentialData::QwenOAuth { creds_file_path } => {
                 format!("Qwen OAuth: {}", mask_path(creds_file_path))
             }
+            CredentialData::AntigravityOAuth {
+                creds_file_path, ..
+            } => {
+                format!("Antigravity OAuth: {}", mask_path(creds_file_path))
+            }
             CredentialData::OpenAIKey { api_key, .. } => {
                 format!("OpenAI: {}", mask_key(api_key))
             }
@@ -105,6 +114,7 @@ impl CredentialData {
             CredentialData::KiroOAuth { .. } => PoolProviderType::Kiro,
             CredentialData::GeminiOAuth { .. } => PoolProviderType::Gemini,
             CredentialData::QwenOAuth { .. } => PoolProviderType::Qwen,
+            CredentialData::AntigravityOAuth { .. } => PoolProviderType::Antigravity,
             CredentialData::OpenAIKey { .. } => PoolProviderType::OpenAI,
             CredentialData::ClaudeKey { .. } => PoolProviderType::Claude,
         }
@@ -370,6 +380,7 @@ pub fn get_default_check_model(provider_type: PoolProviderType) -> &'static str 
         PoolProviderType::Qwen => "qwen3-coder-flash",
         PoolProviderType::OpenAI => "gpt-3.5-turbo",
         PoolProviderType::Claude => "claude-3-5-haiku-latest",
+        PoolProviderType::Antigravity => "gemini-3-pro-preview",
     }
 }
 
@@ -383,14 +394,20 @@ pub struct CredentialDisplay {
     pub display_credential: String,
     pub is_healthy: bool,
     pub is_disabled: bool,
+    pub check_health: bool,
+    pub check_model_name: Option<String>,
+    pub not_supported_models: Vec<String>,
     pub usage_count: u64,
     pub error_count: u32,
     pub last_used: Option<String>,
+    pub last_error_time: Option<String>,
     pub last_error_message: Option<String>,
     pub last_health_check_time: Option<String>,
     pub last_health_check_model: Option<String>,
     pub oauth_status: Option<OAuthStatus>,
     pub token_cache_status: Option<TokenCacheStatus>,
+    pub created_at: String,
+    pub updated_at: String,
 }
 
 /// 获取凭证类型字符串
@@ -399,6 +416,7 @@ fn get_credential_type(cred: &CredentialData) -> String {
         CredentialData::KiroOAuth { .. } => "kiro_oauth".to_string(),
         CredentialData::GeminiOAuth { .. } => "gemini_oauth".to_string(),
         CredentialData::QwenOAuth { .. } => "qwen_oauth".to_string(),
+        CredentialData::AntigravityOAuth { .. } => "antigravity_oauth".to_string(),
         CredentialData::OpenAIKey { .. } => "openai_key".to_string(),
         CredentialData::ClaudeKey { .. } => "claude_key".to_string(),
     }
@@ -408,8 +426,13 @@ fn get_credential_type(cred: &CredentialData) -> String {
 pub fn get_oauth_creds_path(cred: &CredentialData) -> Option<String> {
     match cred {
         CredentialData::KiroOAuth { creds_file_path } => Some(creds_file_path.clone()),
-        CredentialData::GeminiOAuth { creds_file_path, .. } => Some(creds_file_path.clone()),
+        CredentialData::GeminiOAuth {
+            creds_file_path, ..
+        } => Some(creds_file_path.clone()),
         CredentialData::QwenOAuth { creds_file_path } => Some(creds_file_path.clone()),
+        CredentialData::AntigravityOAuth {
+            creds_file_path, ..
+        } => Some(creds_file_path.clone()),
         _ => None,
     }
 }
@@ -435,14 +458,20 @@ impl From<&ProviderCredential> for CredentialDisplay {
             display_credential: cred.credential.display_name(),
             is_healthy: cred.is_healthy,
             is_disabled: cred.is_disabled,
+            check_health: cred.check_health,
+            check_model_name: cred.check_model_name.clone(),
+            not_supported_models: cred.not_supported_models.clone(),
             usage_count: cred.usage_count,
             error_count: cred.error_count,
             last_used: cred.last_used.map(|t| t.to_rfc3339()),
+            last_error_time: cred.last_error_time.map(|t| t.to_rfc3339()),
             last_error_message: cred.last_error_message.clone(),
             last_health_check_time: cred.last_health_check_time.map(|t| t.to_rfc3339()),
             last_health_check_model: cred.last_health_check_model.clone(),
             oauth_status: None, // 需要单独调用获取
             token_cache_status,
+            created_at: cred.created_at.to_rfc3339(),
+            updated_at: cred.updated_at.to_rfc3339(),
         }
     }
 }

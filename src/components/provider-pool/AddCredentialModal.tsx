@@ -14,6 +14,7 @@ const defaultCredsPath: Record<string, string> = {
   kiro: "~/.aws/sso/cache/kiro-auth-token.json",
   gemini: "~/.gemini/oauth_creds.json",
   qwen: "~/.qwen/oauth_creds.json",
+  antigravity: "~/.antigravity/oauth_creds.json",
 };
 
 export function AddCredentialModal({
@@ -35,7 +36,9 @@ export function AddCredentialModal({
   const [apiKey, setApiKey] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
 
-  const isOAuth = ["kiro", "gemini", "qwen"].includes(providerType);
+  const isOAuth = ["kiro", "gemini", "qwen", "antigravity"].includes(
+    providerType,
+  );
 
   const providerLabels: Record<PoolProviderType, string> = {
     kiro: "Kiro (AWS)",
@@ -43,6 +46,7 @@ export function AddCredentialModal({
     qwen: "Qwen (阿里)",
     openai: "OpenAI",
     claude: "Claude (Anthropic)",
+    antigravity: "Antigravity (Gemini 3 Pro)",
   };
 
   const handleSelectFile = async () => {

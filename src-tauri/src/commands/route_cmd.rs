@@ -65,17 +65,14 @@ pub async fn get_route_curl_examples(
         .map_err(|e| e.to_string())?;
 
     // 查找匹配的路由
-    let route = routes
-        .iter()
-        .find(|r| r.selector == selector)
-        .or_else(|| {
-            // 如果是默认路由
-            if selector == "default" {
-                None // 返回 None 让下面的代码生成默认示例
-            } else {
-                None
-            }
-        });
+    let route = routes.iter().find(|r| r.selector == selector).or_else(|| {
+        // 如果是默认路由
+        if selector == "default" {
+            None // 返回 None 让下面的代码生成默认示例
+        } else {
+            None
+        }
+    });
 
     let api_key = &config.server.api_key;
 

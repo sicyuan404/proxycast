@@ -1,10 +1,24 @@
 import { useState, useEffect } from "react";
-import { AlertTriangle, X, RotateCcw, Trash2, Settings, CheckCircle2 } from "lucide-react";
+import {
+  AlertTriangle,
+  X,
+  RotateCcw,
+  Trash2,
+  Settings,
+  CheckCircle2,
+} from "lucide-react";
 
 export interface ErrorInfo {
   id: string;
   message: string;
-  type: "delete" | "toggle" | "reset" | "health_check" | "refresh_token" | "general" | "success";
+  type:
+    | "delete"
+    | "toggle"
+    | "reset"
+    | "health_check"
+    | "refresh_token"
+    | "general"
+    | "success";
   uuid?: string; // 相关凭证的UUID（如果有的话）
 }
 
@@ -19,47 +33,51 @@ const ErrorTypeConfig = {
     icon: Trash2,
     color: "text-red-600 dark:text-red-400",
     bgColor: "bg-red-50 dark:bg-red-950/30",
-    borderColor: "border-red-200 dark:border-red-800"
+    borderColor: "border-red-200 dark:border-red-800",
   },
   toggle: {
     icon: Settings,
     color: "text-blue-600 dark:text-blue-400",
     bgColor: "bg-blue-50 dark:bg-blue-950/30",
-    borderColor: "border-blue-200 dark:border-blue-800"
+    borderColor: "border-blue-200 dark:border-blue-800",
   },
   reset: {
     icon: RotateCcw,
     color: "text-orange-600 dark:text-orange-400",
     bgColor: "bg-orange-50 dark:bg-orange-950/30",
-    borderColor: "border-orange-200 dark:border-orange-800"
+    borderColor: "border-orange-200 dark:border-orange-800",
   },
   health_check: {
     icon: AlertTriangle,
     color: "text-yellow-600 dark:text-yellow-400",
     bgColor: "bg-yellow-50 dark:bg-yellow-950/30",
-    borderColor: "border-yellow-200 dark:border-yellow-800"
+    borderColor: "border-yellow-200 dark:border-yellow-800",
   },
   refresh_token: {
     icon: RotateCcw,
     color: "text-purple-600 dark:text-purple-400",
     bgColor: "bg-purple-50 dark:bg-purple-950/30",
-    borderColor: "border-purple-200 dark:border-purple-800"
+    borderColor: "border-purple-200 dark:border-purple-800",
   },
   general: {
     icon: AlertTriangle,
     color: "text-gray-600 dark:text-gray-400",
     bgColor: "bg-gray-50 dark:bg-gray-950/30",
-    borderColor: "border-gray-200 dark:border-gray-800"
+    borderColor: "border-gray-200 dark:border-gray-800",
   },
   success: {
     icon: CheckCircle2,
     color: "text-green-600 dark:text-green-400",
     bgColor: "bg-green-50 dark:bg-green-950/30",
-    borderColor: "border-green-200 dark:border-green-800"
-  }
+    borderColor: "border-green-200 dark:border-green-800",
+  },
 };
 
-function ErrorItem({ error, onDismiss, onRetry }: {
+function ErrorItem({
+  error,
+  onDismiss,
+  onRetry,
+}: {
   error: ErrorInfo;
   onDismiss: (id: string) => void;
   onRetry?: (error: ErrorInfo) => void;
@@ -68,7 +86,9 @@ function ErrorItem({ error, onDismiss, onRetry }: {
   const IconComponent = config.icon;
 
   return (
-    <div className={`rounded-lg border p-4 ${config.bgColor} ${config.borderColor}`}>
+    <div
+      className={`rounded-lg border p-4 ${config.bgColor} ${config.borderColor}`}
+    >
       <div className="flex items-start gap-3">
         <IconComponent className={`h-5 w-5 mt-0.5 ${config.color}`} />
         <div className="flex-1 min-w-0">
@@ -99,12 +119,16 @@ function ErrorItem({ error, onDismiss, onRetry }: {
   );
 }
 
-export function ErrorDisplay({ errors, onDismiss, onRetry }: ErrorDisplayProps) {
+export function ErrorDisplay({
+  errors,
+  onDismiss,
+  onRetry,
+}: ErrorDisplayProps) {
   // 自动关闭通知
   useEffect(() => {
     const timers: ReturnType<typeof setTimeout>[] = [];
 
-    errors.forEach(error => {
+    errors.forEach((error) => {
       // 成功消息 3 秒后自动关闭，其他类型 15 秒后自动关闭
       if (error.type === "success") {
         const timer = setTimeout(() => {
@@ -120,7 +144,7 @@ export function ErrorDisplay({ errors, onDismiss, onRetry }: ErrorDisplayProps) 
     });
 
     return () => {
-      timers.forEach(timer => clearTimeout(timer));
+      timers.forEach((timer) => clearTimeout(timer));
     };
   }, [errors, onDismiss]);
 
@@ -131,7 +155,7 @@ export function ErrorDisplay({ errors, onDismiss, onRetry }: ErrorDisplayProps) 
   return (
     <div className="fixed top-4 right-4 z-50 w-96 max-w-full">
       <div className="space-y-3 max-h-96 overflow-y-auto">
-        {errors.map(error => (
+        {errors.map((error) => (
           <ErrorItem
             key={error.id}
             error={error}
@@ -149,20 +173,26 @@ export function ErrorDisplay({ errors, onDismiss, onRetry }: ErrorDisplayProps) 
 export function useErrorDisplay() {
   const [errors, setErrors] = useState<ErrorInfo[]>([]);
 
-  const showError = (message: string, type: ErrorInfo["type"] = "general", uuid?: string) => {
+  const showError = (
+    message: string,
+    type: ErrorInfo["type"] = "general",
+    uuid?: string,
+  ) => {
     // 检查是否已经存在相同的错误消息（基于 message, type, uuid 的组合）
-    setErrors(prev => {
-      const isDuplicate = prev.some(existing =>
-        existing.message === message &&
-        existing.type === type &&
-        existing.uuid === uuid
+    setErrors((prev) => {
+      const isDuplicate = prev.some(
+        (existing) =>
+          existing.message === message &&
+          existing.type === type &&
+          existing.uuid === uuid,
       );
 
       if (isDuplicate) {
         return prev; // 如果重复，不添加新的错误
       }
 
-      const id = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+      const id =
+        Date.now().toString() + Math.random().toString(36).substr(2, 9);
       const error: ErrorInfo = { id, message, type, uuid };
       return [...prev, error];
     });
@@ -171,11 +201,11 @@ export function useErrorDisplay() {
   const showSuccess = (message: string, uuid?: string) => {
     const id = Date.now().toString() + Math.random().toString(36).substr(2, 9);
     const info: ErrorInfo = { id, message, type: "success", uuid };
-    setErrors(prev => [...prev, info]);
+    setErrors((prev) => [...prev, info]);
   };
 
   const dismissError = (id: string) => {
-    setErrors(prev => prev.filter(error => error.id !== id));
+    setErrors((prev) => prev.filter((error) => error.id !== id));
   };
 
   const clearErrors = () => {

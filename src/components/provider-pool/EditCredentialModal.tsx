@@ -1,9 +1,18 @@
 import { useState, useEffect } from "react";
-import { X, Eye, EyeOff, Settings, FolderOpen, Upload, CheckCircle } from "lucide-react";
+import {
+  X,
+  Eye,
+  EyeOff,
+  Settings,
+  Upload,
+  CheckCircle,
+  Ban,
+} from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
   CredentialDisplay,
   UpdateCredentialRequest,
+  PoolProviderType,
 } from "@/lib/api/providerPool";
 
 interface EditCredentialModalProps {
@@ -12,6 +21,37 @@ interface EditCredentialModalProps {
   onClose: () => void;
   onEdit: (uuid: string, request: UpdateCredentialRequest) => Promise<void>;
 }
+
+// 各 Provider 支持的模型列表 (参考 AIClient-2-API/src/provider-models.js)
+const providerModels: Record<PoolProviderType, string[]> = {
+  kiro: [
+    "claude-opus-4-5",
+    "claude-opus-4-5-20251101",
+    "claude-haiku-4-5",
+    "claude-sonnet-4-5",
+    "claude-sonnet-4-5-20250929",
+    "claude-sonnet-4-20250514",
+    "claude-3-7-sonnet-20250219",
+  ],
+  gemini: [
+    "gemini-2.5-flash",
+    "gemini-2.5-flash-lite",
+    "gemini-2.5-pro",
+    "gemini-2.5-pro-preview-06-05",
+    "gemini-2.5-flash-preview-09-2025",
+    "gemini-3-pro-preview",
+  ],
+  qwen: ["qwen3-coder-plus", "qwen3-coder-flash"],
+  antigravity: [
+    "gemini-3-pro-preview",
+    "gemini-3-pro-image-preview",
+    "gemini-2.5-computer-use-preview-10-2025",
+    "gemini-claude-sonnet-4-5",
+    "gemini-claude-sonnet-4-5-thinking",
+  ],
+  openai: [], // 自定义 API，无预设模型
+  claude: [], // 自定义 API，无预设模型
+};
 
 export function EditCredentialModal({
   credential,
@@ -22,7 +62,7 @@ export function EditCredentialModal({
   const [name, setName] = useState("");
   const [checkHealth, setCheckHealth] = useState(true);
   const [checkModelName, setCheckModelName] = useState("");
-  const [notSupportedModelsText, setNotSupportedModelsText] = useState("");
+  const [notSupportedModels, setNotSupportedModels] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showCredentialDetails, setShowCredentialDetails] = useState(false);
@@ -37,9 +77,7 @@ export function EditCredentialModal({
       setName(credential.name || "");
       setCheckHealth(credential.check_health);
       setCheckModelName(credential.check_model_name || "");
-      setNotSupportedModelsText(
-        (credential.not_supported_models || []).join(", "),
-      );
+      setNotSupportedModels(credential.not_supported_models || []);
       setNewCredFilePath("");
       setNewProjectId("");
       setError(null);
@@ -51,6 +89,18 @@ export function EditCredentialModal({
   }
 
   const isOAuth = credential.credential_type.includes("oauth");
+
+  // 获取当前 provider 类型
+  const getProviderType = (): PoolProviderType => {
+    if (credential.credential_type.includes("kiro")) return "kiro";
+    if (credential.credential_type.includes("gemini")) return "gemini";
+    if (credential.credential_type.includes("qwen")) return "qwen";
+    if (credential.credential_type.includes("openai")) return "openai";
+    if (credential.credential_type.includes("claude")) return "claude";
+    return "kiro";
+  };
+
+  const currentProviderModels = providerModels[getProviderType()] || [];
 
   const handleSelectNewFile = async () => {
     try {
@@ -68,7 +118,6 @@ export function EditCredentialModal({
 
   const getMaskedCredentialInfo = () => {
     if (isOAuth) {
-      // OAuth 凭证显示文件路径（部分遮罩）
       const path = credential.display_credential;
       const parts = path.split("/");
       if (parts.length > 1) {
@@ -78,9 +127,14 @@ export function EditCredentialModal({
       }
       return `***${path.slice(-12)}`;
     } else {
-      // API Key 显示遮罩
       return credential.display_credential;
     }
+  };
+
+  const toggleModelSupport = (model: string) => {
+    setNotSupportedModels((prev) =>
+      prev.includes(model) ? prev.filter((m) => m !== model) : [...prev, model],
+    );
   };
 
   const handleSubmit = async () => {
@@ -88,20 +142,12 @@ export function EditCredentialModal({
     setError(null);
 
     try {
-      // 解析不支持的模型列表
-      const parsedNotSupportedModels = notSupportedModelsText
-        .split(",")
-        .map((model) => model.trim())
-        .filter((model) => model.length > 0);
-
       const updateRequest: UpdateCredentialRequest = {
         name: name.trim() || undefined,
         check_health: checkHealth,
         check_model_name: checkModelName.trim() || undefined,
-        not_supported_models:
-          parsedNotSupportedModels.length > 0
-            ? parsedNotSupportedModels
-            : undefined,
+        // 始终传递 not_supported_models，即使为空数组（用于清除选择）
+        not_supported_models: notSupportedModels,
         new_creds_file_path: newCredFilePath.trim() || undefined,
         new_project_id: newProjectId.trim() || undefined,
       };
@@ -117,9 +163,9 @@ export function EditCredentialModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="w-full max-w-2xl h-[80vh] rounded-lg bg-background shadow-xl flex flex-col">
+      <div className="w-full max-w-2xl max-h-[85vh] rounded-lg bg-background shadow-xl flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between border-b pb-4 px-6 pt-6">
+        <div className="flex items-center justify-between border-b pb-4 px-6 pt-6 shrink-0">
           <h3 className="text-lg font-semibold flex items-center gap-2">
             <Settings className="h-5 w-5" />
             编辑凭证
@@ -131,204 +177,189 @@ export function EditCredentialModal({
 
         {/* Content - Scrollable */}
         <div className="flex-1 overflow-y-auto px-6 py-4">
-          <div className="space-y-4">
-          {/* 凭证信息（只读） */}
-          <div className="rounded-lg bg-muted/50 p-3">
-            <div className="flex items-center justify-between mb-2">
-              <label className="text-sm font-medium">凭证信息</label>
-              <button
-                type="button"
-                onClick={() => setShowCredentialDetails(!showCredentialDetails)}
-                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-              >
-                {showCredentialDetails ? (
-                  <>
-                    <EyeOff className="h-3 w-3" />
-                    隐藏
-                  </>
-                ) : (
-                  <>
-                    <Eye className="h-3 w-3" />
-                    显示
-                  </>
-                )}
-              </button>
-            </div>
-            <div className="space-y-2 text-sm">
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">类型:</span>
-                <span className="font-mono">{credential.credential_type}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">UUID:</span>
-                <span className="font-mono">
-                  {credential.uuid.slice(0, 24)}...
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">
-                  {isOAuth ? "文件路径:" : "API Key:"}
-                </span>
-                <span className="font-mono">
-                  {showCredentialDetails
-                    ? credential.display_credential
-                    : getMaskedCredentialInfo()}
-                </span>
-              </div>
-            </div>
-            <p className="mt-2 text-xs text-muted-foreground">
-              🔒 敏感信息（API Key、文件路径）无法修改，如需更改请删除后重新添加
-            </p>
-          </div>
-
-          {/* 可编辑字段 */}
-          <div>
-            <label className="mb-1 block text-sm font-medium">名称</label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="给这个凭证起个名字..."
-              className="w-full rounded-lg border bg-background px-3 py-2 text-sm"
-            />
-          </div>
-
-          {/* 健康检查设置 */}
-          <div>
-            <label className="mb-2 flex items-center gap-2 text-sm font-medium">
-              <input
-                type="checkbox"
-                checked={checkHealth}
-                onChange={(e) => setCheckHealth(e.target.checked)}
-                className="rounded"
-              />
-              启用自动健康检查
-            </label>
-            {checkHealth && (
-              <div className="ml-6">
-                <label className="mb-1 block text-xs font-medium text-muted-foreground">
-                  检查模型（可选）
+          <div className="space-y-5">
+            {/* 名称 + 健康检查 */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="mb-1 block text-sm font-medium">
+                  名称 (选填)
                 </label>
                 <input
                   type="text"
-                  value={checkModelName}
-                  onChange={(e) => setCheckModelName(e.target.value)}
-                  placeholder="留空使用默认模型..."
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="给这个凭证起个名字..."
                   className="w-full rounded-lg border bg-background px-3 py-2 text-sm"
                 />
               </div>
-            )}
-          </div>
-
-          {/* 不支持的模型列表 */}
-          <div>
-            <label className="mb-1 block text-sm font-medium">
-              不支持的模型
-            </label>
-            <textarea
-              value={notSupportedModelsText}
-              onChange={(e) => setNotSupportedModelsText(e.target.value)}
-              placeholder="用逗号分隔多个模型，例如: model-1, model-2"
-              className="w-full rounded-lg border bg-background px-3 py-2 text-sm"
-              rows={3}
-            />
-            <p className="mt-1 text-xs text-muted-foreground">
-              这些模型将不会路由到此凭证
-            </p>
-          </div>
-
-          {/* OAuth 文件重新上传 */}
-          {isOAuth && (
-            <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/30 p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <div className="rounded-full bg-amber-100 dark:bg-amber-900/30 p-1.5">
-                  <Upload className="h-3 w-3 text-amber-600 dark:text-amber-400" />
-                </div>
-                <span className="font-semibold text-sm">重新上传凭证文件</span>
-              </div>
-              <p className="text-xs text-muted-foreground mb-3">
-                选择新的凭证文件来替换当前文件。新文件将被复制到应用存储目录。
-              </p>
-              <div className="space-y-3">
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-muted-foreground">
-                    新凭证文件
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      value={newCredFilePath}
-                      onChange={(e) => setNewCredFilePath(e.target.value)}
-                      placeholder="选择新的凭证文件..."
-                      className="flex-1 rounded-lg border bg-background px-3 py-2 text-sm"
-                      readOnly
-                    />
-                    <button
-                      type="button"
-                      onClick={handleSelectNewFile}
-                      className="flex items-center gap-1 rounded-lg bg-blue-100 px-3 py-2 text-xs font-medium text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:hover:bg-blue-800/40 transition-colors"
-                    >
-                      <FolderOpen className="h-3 w-3" />
-                      选择文件
-                    </button>
-                  </div>
-                </div>
-                {credential.credential_type === "gemini_oauth" && (
-                  <div>
-                    <label className="mb-1 block text-xs font-medium text-muted-foreground">
-                      项目ID（可选）
-                    </label>
-                    <input
-                      type="text"
-                      value={newProjectId}
-                      onChange={(e) => setNewProjectId(e.target.value)}
-                      placeholder="留空保持当前项目ID..."
-                      className="w-full rounded-lg border bg-background px-3 py-2 text-sm"
-                    />
-                  </div>
-                )}
-                {newCredFilePath && (
-                  <div className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
-                    <CheckCircle className="h-3 w-3" />
-                    文件已选择，保存后将替换当前凭证文件
-                  </div>
-                )}
+              <div>
+                <label className="mb-1 block text-sm font-medium">
+                  健康检查
+                </label>
+                <select
+                  value={checkHealth ? "enabled" : "disabled"}
+                  onChange={(e) => setCheckHealth(e.target.value === "enabled")}
+                  className="w-full rounded-lg border bg-background px-3 py-2 text-sm"
+                >
+                  <option value="enabled">启用</option>
+                  <option value="disabled">禁用</option>
+                </select>
               </div>
             </div>
-          )}
 
-          {/* 统计信息（只读） */}
-          <div className="rounded-lg bg-muted/50 p-3">
-            <label className="mb-2 block text-sm font-medium">使用统计</label>
-            <div className="grid grid-cols-2 gap-3 text-sm">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">使用次数:</span>
-                <span className="font-mono">{credential.usage_count}</span>
+            {/* 检查模型名称 */}
+            <div>
+              <label className="mb-1 block text-sm font-medium">
+                检查模型名称 (选填)
+              </label>
+              <input
+                type="text"
+                value={checkModelName}
+                onChange={(e) => setCheckModelName(e.target.value)}
+                placeholder="用于健康检查的模型名称..."
+                className="w-full rounded-lg border bg-background px-3 py-2 text-sm"
+              />
+            </div>
+
+            {/* OAuth凭据文件路径 */}
+            {isOAuth && (
+              <div>
+                <label className="mb-1 block text-sm font-medium">
+                  OAuth凭据文件路径
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={
+                      showCredentialDetails
+                        ? credential.display_credential
+                        : getMaskedCredentialInfo()
+                    }
+                    readOnly
+                    className="flex-1 rounded-lg border bg-muted/50 px-3 py-2 text-sm text-muted-foreground"
+                  />
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setShowCredentialDetails(!showCredentialDetails)
+                    }
+                    className="rounded-lg border p-2 hover:bg-muted"
+                    title={showCredentialDetails ? "隐藏" : "显示"}
+                  >
+                    {showCredentialDetails ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSelectNewFile}
+                    className="rounded-lg border p-2 hover:bg-muted"
+                    title="上传新文件"
+                  >
+                    <Upload className="h-4 w-4" />
+                  </button>
+                </div>
+                {newCredFilePath && (
+                  <div className="mt-2 text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
+                    <CheckCircle className="h-3 w-3" />
+                    新文件已选择: {newCredFilePath.split("/").pop()}
+                  </div>
+                )}
               </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">错误次数:</span>
-                <span className="font-mono">{credential.error_count}</span>
-              </div>
-              <div className="col-span-2 flex justify-between">
-                <span className="text-muted-foreground">最后使用:</span>
-                <span className="text-xs">
-                  {credential.last_used || "从未"}
+            )}
+
+            {/* Gemini Project ID */}
+            {credential.credential_type === "gemini_oauth" &&
+              newCredFilePath && (
+                <div>
+                  <label className="mb-1 block text-sm font-medium">
+                    项目ID（可选）
+                  </label>
+                  <input
+                    type="text"
+                    value={newProjectId}
+                    onChange={(e) => setNewProjectId(e.target.value)}
+                    placeholder="留空保持当前项目ID..."
+                    className="w-full rounded-lg border bg-background px-3 py-2 text-sm"
+                  />
+                </div>
+              )}
+
+            {/* 不支持的模型 - Checkbox Grid */}
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <Ban className="h-4 w-4 text-muted-foreground" />
+                <label className="text-sm font-medium">不支持的模型</label>
+                <span className="text-xs text-muted-foreground">
+                  选择此提供商不支持的模型，系统会自动排除这些模型
                 </span>
               </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {currentProviderModels.map((model) => (
+                  <label
+                    key={model}
+                    className={`flex items-center gap-2 rounded-lg border px-3 py-2 cursor-pointer transition-colors ${
+                      notSupportedModels.includes(model)
+                        ? "border-red-300 bg-red-50 dark:border-red-800 dark:bg-red-950/30"
+                        : "border-border hover:bg-muted/50"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={notSupportedModels.includes(model)}
+                      onChange={() => toggleModelSupport(model)}
+                      className="rounded border-gray-300"
+                    />
+                    <span className="text-sm truncate">{model}</span>
+                  </label>
+                ))}
+              </div>
             </div>
-          </div>
 
-          {/* Error */}
-          {error && (
-            <div className="rounded-lg border border-red-500 bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950/30">
-              {error}
+            {/* 使用统计（只读） */}
+            <div className="rounded-lg bg-muted/50 p-4">
+              <label className="mb-3 block text-sm font-medium">使用统计</label>
+              <div className="grid grid-cols-3 gap-4 text-sm">
+                <div>
+                  <span className="text-muted-foreground block text-xs">
+                    使用次数
+                  </span>
+                  <span className="font-semibold">
+                    {credential.usage_count}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground block text-xs">
+                    错误次数
+                  </span>
+                  <span className="font-semibold">
+                    {credential.error_count}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground block text-xs">
+                    最后使用
+                  </span>
+                  <span className="text-xs">
+                    {credential.last_used || "从未"}
+                  </span>
+                </div>
+              </div>
             </div>
-          )}
+
+            {/* Error */}
+            {error && (
+              <div className="rounded-lg border border-red-500 bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950/30">
+                {error}
+              </div>
+            )}
           </div>
         </div>
 
         {/* Footer */}
-        <div className="border-t px-6 py-4 flex justify-end gap-2">
+        <div className="border-t px-6 py-4 flex justify-end gap-2 shrink-0">
           <button
             onClick={onClose}
             className="rounded-lg border px-4 py-2 text-sm hover:bg-muted"

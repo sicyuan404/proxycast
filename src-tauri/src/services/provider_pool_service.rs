@@ -85,7 +85,8 @@ impl ProviderPoolService {
     ) -> Result<Vec<CredentialDisplay>, String> {
         let pt: PoolProviderType = provider_type.parse().map_err(|e: String| e)?;
         let conn = db.lock().map_err(|e| e.to_string())?;
-        let mut credentials = ProviderPoolDao::get_by_type(&conn, &pt).map_err(|e| e.to_string())?;
+        let mut credentials =
+            ProviderPoolDao::get_by_type(&conn, &pt).map_err(|e| e.to_string())?;
 
         // 为每个凭证加载 token 缓存
         for cred in &mut credentials {
@@ -390,6 +391,13 @@ impl ProviderPoolService {
             CredentialData::QwenOAuth { creds_file_path } => {
                 self.check_qwen_health(creds_file_path, model).await
             }
+            CredentialData::AntigravityOAuth {
+                creds_file_path,
+                project_id,
+            } => {
+                self.check_antigravity_health(creds_file_path, project_id.as_deref(), model)
+                    .await
+            }
             CredentialData::OpenAIKey { api_key, base_url } => {
                 self.check_openai_health(api_key, base_url.as_deref(), model)
                     .await
@@ -411,9 +419,13 @@ impl ProviderPoolService {
             format!("{} 认证失败，凭证可能已过期或无效。\n💡 解决方案：\n1. 点击\"刷新\"按钮尝试更新 Token\n2. 如刷新失败，请删除后重新添加此凭证\n3. 检查账户权限是否正常", provider_type)
         } else if error.contains("HTTP 429") {
             format!("{} 请求频率过高，已被限流。\n💡 解决方案：\n1. 稍等几分钟后再次尝试\n2. 考虑添加更多凭证分散负载", provider_type)
-        } else if error.contains("HTTP 500") || error.contains("HTTP 502") || error.contains("HTTP 503") {
+        } else if error.contains("HTTP 500")
+            || error.contains("HTTP 502")
+            || error.contains("HTTP 503")
+        {
             format!("{} 服务暂时不可用。\n💡 解决方案：\n1. 这通常是服务提供方的临时问题\n2. 请稍后重试\n3. 如问题持续，可尝试其他凭证", provider_type)
-        } else if error.contains("读取凭证文件失败") || error.contains("解析凭证失败") {
+        } else if error.contains("读取凭证文件失败") || error.contains("解析凭证失败")
+        {
             format!("凭证文件损坏或不可读。\n💡 解决方案：\n1. 凭证文件可能已损坏\n2. 建议删除此凭证后重新添加\n3. 确保文件权限正确且格式为有效的 JSON")
         } else {
             // 对于其他未识别的错误，提供通用建议
@@ -424,17 +436,24 @@ impl ProviderPoolService {
     // Kiro OAuth 健康检查
     async fn check_kiro_health(&self, creds_path: &str, model: &str) -> Result<(), String> {
         tracing::debug!("[KIRO HEALTH] 开始健康检查，凭证路径: {}", creds_path);
-        
+
         // 使用 KiroProvider 加载凭证（包括 clientIdHash 文件）
         let mut provider = KiroProvider::new();
-        provider.load_credentials_from_path(creds_path).await
-            .map_err(|e| self.format_user_friendly_error(&format!("加载凭证失败: {}", e), "Kiro"))?;
+        provider
+            .load_credentials_from_path(creds_path)
+            .await
+            .map_err(|e| {
+                self.format_user_friendly_error(&format!("加载凭证失败: {}", e), "Kiro")
+            })?;
 
-        let access_token = provider.credentials.access_token.as_ref()
+        let access_token = provider
+            .credentials
+            .access_token
+            .as_ref()
             .ok_or_else(|| "凭证中缺少 access_token".to_string())?;
 
         let health_check_url = provider.get_health_check_url();
-        
+
         // 获取 modelId 映射
         let model_id = match model {
             "claude-opus-4-5" | "claude-opus-4-5-20251101" => "claude-opus-4.5",
@@ -444,7 +463,7 @@ impl ProviderPoolService {
             "claude-3-7-sonnet-20250219" => "CLAUDE_3_7_SONNET_20250219_V1_0",
             _ => "claude-haiku-4.5", // 默认使用 haiku
         };
-        
+
         tracing::debug!("[KIRO HEALTH] 健康检查 URL: {}", health_check_url);
         tracing::debug!("[KIRO HEALTH] 使用模型: {} -> {}", model, model_id);
 
@@ -573,6 +592,44 @@ impl ProviderPoolService {
             .post("https://chat.qwen.ai/api/v1/chat/completions")
             .bearer_auth(access_token)
             .json(&request_body)
+            .timeout(self.health_check_timeout)
+            .send()
+            .await
+            .map_err(|e| format!("请求失败: {}", e))?;
+
+        if response.status().is_success() {
+            Ok(())
+        } else {
+            Err(format!("HTTP {}", response.status()))
+        }
+    }
+
+    // Antigravity OAuth 健康检查
+    async fn check_antigravity_health(
+        &self,
+        creds_path: &str,
+        _project_id: Option<&str>,
+        _model: &str,
+    ) -> Result<(), String> {
+        let creds_content =
+            std::fs::read_to_string(creds_path).map_err(|e| format!("读取凭证文件失败: {}", e))?;
+        let creds: serde_json::Value =
+            serde_json::from_str(&creds_content).map_err(|e| format!("解析凭证失败: {}", e))?;
+
+        let access_token = creds["access_token"]
+            .as_str()
+            .ok_or_else(|| "凭证中缺少 access_token".to_string())?;
+
+        // 使用 fetchAvailableModels 作为健康检查
+        let url =
+            "https://daily-cloudcode-pa.sandbox.googleapis.com/v1internal:fetchAvailableModels";
+
+        let response = self
+            .client
+            .post(url)
+            .bearer_auth(access_token)
+            .header("User-Agent", "antigravity/1.11.5 windows/amd64")
+            .json(&serde_json::json!({}))
             .timeout(self.health_check_timeout)
             .send()
             .await
@@ -726,18 +783,24 @@ impl ProviderPoolService {
     }
 
     /// 获取 OAuth 凭证状态
-    pub fn get_oauth_status(&self, creds_path: &str, provider_type: &str) -> Result<OAuthStatus, String> {
-        let content = std::fs::read_to_string(creds_path)
-            .map_err(|e| format!("读取凭证文件失败: {}", e))?;
-        let creds: serde_json::Value = serde_json::from_str(&content)
-            .map_err(|e| format!("解析凭证文件失败: {}", e))?;
+    pub fn get_oauth_status(
+        &self,
+        creds_path: &str,
+        provider_type: &str,
+    ) -> Result<OAuthStatus, String> {
+        let content =
+            std::fs::read_to_string(creds_path).map_err(|e| format!("读取凭证文件失败: {}", e))?;
+        let creds: serde_json::Value =
+            serde_json::from_str(&content).map_err(|e| format!("解析凭证文件失败: {}", e))?;
 
-        let has_access_token = creds.get("accessToken")
+        let has_access_token = creds
+            .get("accessToken")
             .or_else(|| creds.get("access_token"))
             .map(|v| v.as_str().is_some())
             .unwrap_or(false);
 
-        let has_refresh_token = creds.get("refreshToken")
+        let has_refresh_token = creds
+            .get("refreshToken")
             .or_else(|| creds.get("refresh_token"))
             .map(|v| v.as_str().is_some())
             .unwrap_or(false);
@@ -745,7 +808,8 @@ impl ProviderPoolService {
         // 检查 token 是否有效（根据 expiry_date 判断）
         let (is_token_valid, expiry_info) = match provider_type {
             "kiro" => {
-                let expires_at = creds.get("expiresAt")
+                let expires_at = creds
+                    .get("expiresAt")
                     .or_else(|| creds.get("expires_at"))
                     .and_then(|v| v.as_str())
                     .map(|s| s.to_string());
@@ -780,27 +844,53 @@ impl ProviderPoolService {
     /// 刷新 OAuth Token (Kiro)
     pub async fn refresh_kiro_token(&self, creds_path: &str) -> Result<String, String> {
         let mut provider = crate::providers::kiro::KiroProvider::new();
-        provider.load_credentials_from_path(creds_path).await
-            .map_err(|e| self.format_user_friendly_error(&format!("加载凭证失败: {}", e), "Kiro"))?;
-        provider.refresh_token().await
-            .map_err(|e| self.format_user_friendly_error(&format!("刷新 Token 失败: {}", e), "Kiro"))
+        provider
+            .load_credentials_from_path(creds_path)
+            .await
+            .map_err(|e| {
+                self.format_user_friendly_error(&format!("加载凭证失败: {}", e), "Kiro")
+            })?;
+        provider.refresh_token().await.map_err(|e| {
+            self.format_user_friendly_error(&format!("刷新 Token 失败: {}", e), "Kiro")
+        })
     }
 
     /// 刷新 OAuth Token (Gemini)
     pub async fn refresh_gemini_token(&self, creds_path: &str) -> Result<String, String> {
         let mut provider = crate::providers::gemini::GeminiProvider::new();
-        provider.load_credentials_from_path(creds_path).await
+        provider
+            .load_credentials_from_path(creds_path)
+            .await
             .map_err(|e| format!("加载凭证失败: {}", e))?;
-        provider.refresh_token().await
+        provider
+            .refresh_token()
+            .await
             .map_err(|e| format!("刷新 Token 失败: {}", e))
     }
 
     /// 刷新 OAuth Token (Qwen)
     pub async fn refresh_qwen_token(&self, creds_path: &str) -> Result<String, String> {
         let mut provider = crate::providers::qwen::QwenProvider::new();
-        provider.load_credentials_from_path(creds_path).await
+        provider
+            .load_credentials_from_path(creds_path)
+            .await
             .map_err(|e| format!("加载凭证失败: {}", e))?;
-        provider.refresh_token().await
+        provider
+            .refresh_token()
+            .await
+            .map_err(|e| format!("刷新 Token 失败: {}", e))
+    }
+
+    /// 刷新 OAuth Token (Antigravity)
+    pub async fn refresh_antigravity_token(&self, creds_path: &str) -> Result<String, String> {
+        let mut provider = crate::providers::antigravity::AntigravityProvider::new();
+        provider
+            .load_credentials_from_path(creds_path)
+            .await
+            .map_err(|e| format!("加载凭证失败: {}", e))?;
+        provider
+            .refresh_token()
+            .await
             .map_err(|e| format!("刷新 Token 失败: {}", e))
     }
 
@@ -821,12 +911,15 @@ impl ProviderPoolService {
             CredentialData::KiroOAuth { creds_file_path } => {
                 self.refresh_kiro_token(creds_file_path).await
             }
-            CredentialData::GeminiOAuth { creds_file_path, .. } => {
-                self.refresh_gemini_token(creds_file_path).await
-            }
+            CredentialData::GeminiOAuth {
+                creds_file_path, ..
+            } => self.refresh_gemini_token(creds_file_path).await,
             CredentialData::QwenOAuth { creds_file_path } => {
                 self.refresh_qwen_token(creds_file_path).await
             }
+            CredentialData::AntigravityOAuth {
+                creds_file_path, ..
+            } => self.refresh_antigravity_token(creds_file_path).await,
             _ => Err("此凭证类型不支持 Token 刷新".to_string()),
         }
     }

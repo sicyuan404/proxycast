@@ -50,6 +50,7 @@ impl Default for SkillRepo {
     }
 }
 
+#[allow(dead_code)]
 impl SkillRepo {
     pub fn new(owner: String, name: String, branch: String) -> Self {
         Self {

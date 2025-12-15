@@ -3,6 +3,7 @@ use serde_json::{json, Map, Value};
 use std::path::PathBuf;
 
 /// Get the MCP config file path for an app type
+#[allow(dead_code)]
 pub fn get_mcp_config_path(app_type: &AppType) -> Option<PathBuf> {
     let home = dirs::home_dir()?;
     match app_type {

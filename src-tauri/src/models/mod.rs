@@ -19,5 +19,6 @@ pub use mcp_model::McpServer;
 pub use openai::*;
 pub use prompt_model::Prompt;
 pub use provider_model::Provider;
+#[allow(unused_imports)]
 pub use provider_pool_model::*;
 pub use skill_model::{Skill, SkillMetadata, SkillRepo, SkillState, SkillStates};

@@ -1,9 +1,12 @@
+pub mod antigravity;
 pub mod claude_custom;
 pub mod gemini;
 pub mod kiro;
 pub mod openai_custom;
 pub mod qwen;
 
+#[allow(unused_imports)]
+pub use antigravity::AntigravityProvider;
 #[allow(unused_imports)]
 pub use claude_custom::ClaudeCustomProvider;
 #[allow(unused_imports)]

@@ -1,18 +1,18 @@
 //! Provider Pool Tauri 命令
 
-use crate::database::DbConnection;
 use crate::database::dao::provider_pool::ProviderPoolDao;
+use crate::database::DbConnection;
 use crate::models::provider_pool_model::{
     AddCredentialRequest, CredentialData, CredentialDisplay, HealthCheckResult, OAuthStatus,
     ProviderCredential, ProviderPoolOverview, UpdateCredentialRequest,
 };
 use crate::services::provider_pool_service::ProviderPoolService;
-use std::sync::Arc;
-use tauri::State;
+use chrono::Utc;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use tauri::State;
 use uuid::Uuid;
-use chrono::Utc;
 
 pub struct ProviderPoolServiceState(pub Arc<ProviderPoolService>);
 
@@ -35,8 +35,7 @@ fn get_credentials_dir() -> Result<PathBuf, String> {
 
     // 确保目录存在
     if !app_data_dir.exists() {
-        fs::create_dir_all(&app_data_dir)
-            .map_err(|e| format!("创建凭证存储目录失败: {}", e))?;
+        fs::create_dir_all(&app_data_dir).map_err(|e| format!("创建凭证存储目录失败: {}", e))?;
     }
 
     Ok(app_data_dir)
@@ -45,7 +44,7 @@ fn get_credentials_dir() -> Result<PathBuf, String> {
 /// 复制并重命名 OAuth 凭证文件
 fn copy_and_rename_credential_file(
     source_path: &str,
-    provider_type: &str
+    provider_type: &str,
 ) -> Result<String, String> {
     let expanded_source = expand_tilde(source_path);
     let source = Path::new(&expanded_source);
@@ -62,7 +61,8 @@ fn copy_and_rename_credential_file(
         .unwrap()
         .as_secs();
 
-    let new_filename = format!("{}_{}_{}_{}.json",
+    let new_filename = format!(
+        "{}_{}_{}_{}.json",
         provider_type,
         &uuid[..8], // 使用 UUID 前8位
         timestamp,
@@ -74,8 +74,7 @@ fn copy_and_rename_credential_file(
     let target_path = credentials_dir.join(&new_filename);
 
     // 复制文件
-    fs::copy(&source, &target_path)
-        .map_err(|e| format!("复制凭证文件失败: {}", e))?;
+    fs::copy(&source, &target_path).map_err(|e| format!("复制凭证文件失败: {}", e))?;
 
     // 返回新的文件路径
     Ok(target_path.to_string_lossy().to_string())
@@ -160,17 +159,26 @@ pub fn update_provider_pool_credential(
                 // 清理旧文件
                 cleanup_credential_file(creds_file_path)?;
                 copy_and_rename_credential_file(&new_file_path, "kiro")?
-            },
-            CredentialData::GeminiOAuth { creds_file_path, .. } => {
+            }
+            CredentialData::GeminiOAuth {
+                creds_file_path, ..
+            } => {
                 // 清理旧文件
                 cleanup_credential_file(creds_file_path)?;
                 copy_and_rename_credential_file(&new_file_path, "gemini")?
-            },
+            }
             CredentialData::QwenOAuth { creds_file_path } => {
                 // 清理旧文件
                 cleanup_credential_file(creds_file_path)?;
                 copy_and_rename_credential_file(&new_file_path, "qwen")?
-            },
+            }
+            CredentialData::AntigravityOAuth {
+                creds_file_path, ..
+            } => {
+                // 清理旧文件
+                cleanup_credential_file(creds_file_path)?;
+                copy_and_rename_credential_file(&new_file_path, "antigravity")?
+            }
             _ => {
                 return Err("只有 OAuth 凭证支持重新上传文件".to_string());
             }
@@ -183,16 +191,28 @@ pub fn update_provider_pool_credential(
         match &mut updated_cred.credential {
             CredentialData::KiroOAuth { creds_file_path } => {
                 *creds_file_path = new_stored_path;
-            },
-            CredentialData::GeminiOAuth { creds_file_path, project_id } => {
+            }
+            CredentialData::GeminiOAuth {
+                creds_file_path,
+                project_id,
+            } => {
                 *creds_file_path = new_stored_path;
                 if let Some(new_pid) = request.new_project_id {
                     *project_id = Some(new_pid);
                 }
-            },
+            }
             CredentialData::QwenOAuth { creds_file_path } => {
                 *creds_file_path = new_stored_path;
-            },
+            }
+            CredentialData::AntigravityOAuth {
+                creds_file_path,
+                project_id,
+            } => {
+                *creds_file_path = new_stored_path;
+                if let Some(new_pid) = request.new_project_id {
+                    *project_id = Some(new_pid);
+                }
+            }
             _ => {}
         }
 
@@ -251,15 +271,9 @@ pub fn toggle_provider_pool_credential(
     uuid: String,
     is_disabled: bool,
 ) -> Result<ProviderCredential, String> {
-    pool_service.0.update_credential(
-        &db,
-        &uuid,
-        None,
-        Some(is_disabled),
-        None,
-        None,
-        None,
-    )
+    pool_service
+        .0
+        .update_credential(&db, &uuid, None, Some(is_disabled), None, None, None)
 }
 
 /// 重置凭证计数器
@@ -292,7 +306,11 @@ pub async fn check_provider_pool_credential_health(
     tracing::info!("[DEBUG] 开始健康检查 for uuid: {}", uuid);
     let result = pool_service.0.check_credential_health(&db, &uuid).await;
     match &result {
-        Ok(health) => tracing::info!("[DEBUG] 健康检查完成: success={}, message={:?}", health.success, health.message),
+        Ok(health) => tracing::info!(
+            "[DEBUG] 健康检查完成: success={}, message={:?}",
+            health.success,
+            health.message
+        ),
         Err(err) => tracing::error!("[DEBUG] 健康检查失败: {}", err),
     }
     result
@@ -379,6 +397,31 @@ pub fn add_qwen_oauth_credential(
     )
 }
 
+/// 添加 Antigravity OAuth 凭证（通过文件路径）
+#[tauri::command]
+pub fn add_antigravity_oauth_credential(
+    db: State<'_, DbConnection>,
+    pool_service: State<'_, ProviderPoolServiceState>,
+    creds_file_path: String,
+    project_id: Option<String>,
+    name: Option<String>,
+) -> Result<ProviderCredential, String> {
+    // 复制并重命名文件到应用存储目录
+    let stored_file_path = copy_and_rename_credential_file(&creds_file_path, "antigravity")?;
+
+    pool_service.0.add_credential(
+        &db,
+        "antigravity",
+        CredentialData::AntigravityOAuth {
+            creds_file_path: stored_file_path,
+            project_id,
+        },
+        name,
+        Some(true),
+        None,
+    )
+}
+
 /// 添加 OpenAI API Key 凭证
 #[tauri::command]
 pub fn add_openai_key_credential(
@@ -456,10 +499,22 @@ pub async fn debug_kiro_credentials() -> Result<String, String> {
     match provider.load_credentials().await {
         Ok(_) => {
             result.push_str("✅ 凭证加载成功!\n");
-            result.push_str(&format!("📄 认证方式: {:?}\n", provider.credentials.auth_method));
-            result.push_str(&format!("🔑 有 client_id: {}\n", provider.credentials.client_id.is_some()));
-            result.push_str(&format!("🔒 有 client_secret: {}\n", provider.credentials.client_secret.is_some()));
-            result.push_str(&format!("🏷️  有 clientIdHash: {}\n", provider.credentials.client_id_hash.is_some()));
+            result.push_str(&format!(
+                "📄 认证方式: {:?}\n",
+                provider.credentials.auth_method
+            ));
+            result.push_str(&format!(
+                "🔑 有 client_id: {}\n",
+                provider.credentials.client_id.is_some()
+            ));
+            result.push_str(&format!(
+                "🔒 有 client_secret: {}\n",
+                provider.credentials.client_secret.is_some()
+            ));
+            result.push_str(&format!(
+                "🏷️  有 clientIdHash: {}\n",
+                provider.credentials.client_id_hash.is_some()
+            ));
 
             if let Some(hash) = &provider.credentials.client_id_hash {
                 result.push_str(&format!("🔗 clientIdHash: {}\n", hash));
@@ -472,14 +527,20 @@ pub async fn debug_kiro_credentials() -> Result<String, String> {
             result.push_str(&format!("🌐 刷新端点: {}\n", refresh_url));
 
             if let Some(client_id) = &provider.credentials.client_id {
-                result.push_str(&format!("🆔 client_id 前缀: {}...\n", &client_id[..std::cmp::min(20, client_id.len())]));
+                result.push_str(&format!(
+                    "🆔 client_id 前缀: {}...\n",
+                    &client_id[..std::cmp::min(20, client_id.len())]
+                ));
             }
 
             result.push_str("\n🚀 尝试刷新 token...\n");
             match provider.refresh_token().await {
                 Ok(token) => {
                     result.push_str(&format!("✅ Token 刷新成功! Token 长度: {}\n", token.len()));
-                    result.push_str(&format!("🎫 Token 前缀: {}...\n", &token[..std::cmp::min(50, token.len())]));
+                    result.push_str(&format!(
+                        "🎫 Token 前缀: {}...\n",
+                        &token[..std::cmp::min(50, token.len())]
+                    ));
                 }
                 Err(e) => {
                     result.push_str(&format!("❌ Token 刷新失败: {}\n", e));
@@ -498,7 +559,6 @@ pub async fn debug_kiro_credentials() -> Result<String, String> {
 #[tauri::command]
 pub async fn test_user_credentials() -> Result<String, String> {
     use crate::providers::kiro::KiroProvider;
-    use std::path::PathBuf;
 
     let mut result = String::new();
     result.push_str("🧪 测试用户上传的凭证文件...\n\n");
@@ -506,7 +566,9 @@ pub async fn test_user_credentials() -> Result<String, String> {
     // 测试用户上传的凭证文件路径
     let user_creds_path = dirs::home_dir()
         .ok_or("无法获取用户主目录".to_string())?
-        .join("Library/Application Support/proxycast/credentials/kiro_d8da9d58_1765757992_kiro.json");
+        .join(
+            "Library/Application Support/proxycast/credentials/kiro_d8da9d58_1765757992_kiro.json",
+        );
 
     result.push_str(&format!("📂 用户凭证路径: {}\n", user_creds_path.display()));
 
@@ -531,8 +593,10 @@ pub async fn test_user_credentials() -> Result<String, String> {
                     result.push_str("✅ JSON 格式有效\n");
 
                     // 检查关键字段
-                    let has_access_token = json.get("accessToken").and_then(|v| v.as_str()).is_some();
-                    let has_refresh_token = json.get("refreshToken").and_then(|v| v.as_str()).is_some();
+                    let has_access_token =
+                        json.get("accessToken").and_then(|v| v.as_str()).is_some();
+                    let has_refresh_token =
+                        json.get("refreshToken").and_then(|v| v.as_str()).is_some();
                     let auth_method = json.get("authMethod").and_then(|v| v.as_str());
                     let client_id_hash = json.get("clientIdHash").and_then(|v| v.as_str());
                     let region = json.get("region").and_then(|v| v.as_str());
@@ -550,7 +614,10 @@ pub async fn test_user_credentials() -> Result<String, String> {
                             .join(".aws/sso/cache")
                             .join(format!("{}.json", hash));
 
-                        result.push_str(&format!("\n🔗 检查 clientIdHash 文件: {}\n", hash_file_path.display()));
+                        result.push_str(&format!(
+                            "\n🔗 检查 clientIdHash 文件: {}\n",
+                            hash_file_path.display()
+                        ));
 
                         if hash_file_path.exists() {
                             result.push_str("✅ clientIdHash 文件存在\n");
@@ -559,20 +626,37 @@ pub async fn test_user_credentials() -> Result<String, String> {
                                 Ok(hash_content) => {
                                     match serde_json::from_str::<serde_json::Value>(&hash_content) {
                                         Ok(hash_json) => {
-                                            let has_client_id = hash_json.get("clientId").and_then(|v| v.as_str()).is_some();
-                                            let has_client_secret = hash_json.get("clientSecret").and_then(|v| v.as_str()).is_some();
+                                            let has_client_id = hash_json
+                                                .get("clientId")
+                                                .and_then(|v| v.as_str())
+                                                .is_some();
+                                            let has_client_secret = hash_json
+                                                .get("clientSecret")
+                                                .and_then(|v| v.as_str())
+                                                .is_some();
 
-                                            result.push_str(&format!("🆔 hash 文件有 clientId: {}\n", has_client_id));
-                                            result.push_str(&format!("🔒 hash 文件有 clientSecret: {}\n", has_client_secret));
+                                            result.push_str(&format!(
+                                                "🆔 hash 文件有 clientId: {}\n",
+                                                has_client_id
+                                            ));
+                                            result.push_str(&format!(
+                                                "🔒 hash 文件有 clientSecret: {}\n",
+                                                has_client_secret
+                                            ));
 
                                             if has_client_id && has_client_secret {
                                                 result.push_str("✅ IdC 认证配置完整!\n");
                                             } else {
-                                                result.push_str("⚠️ IdC 认证配置不完整，将使用 social 认证\n");
+                                                result.push_str(
+                                                    "⚠️ IdC 认证配置不完整，将使用 social 认证\n",
+                                                );
                                             }
                                         }
                                         Err(e) => {
-                                            result.push_str(&format!("❌ 无法解析 hash 文件 JSON: {}\n", e));
+                                            result.push_str(&format!(
+                                                "❌ 无法解析 hash 文件 JSON: {}\n",
+                                                e
+                                            ));
                                         }
                                     }
                                 }
@@ -592,12 +676,24 @@ pub async fn test_user_credentials() -> Result<String, String> {
                     // 设置凭证路径到用户文件
                     provider.creds_path = Some(user_creds_path.clone());
 
-                    match provider.load_credentials_from_path(&user_creds_path.to_string_lossy()).await {
+                    match provider
+                        .load_credentials_from_path(&user_creds_path.to_string_lossy())
+                        .await
+                    {
                         Ok(_) => {
                             result.push_str("✅ KiroProvider 加载成功!\n");
-                            result.push_str(&format!("📄 最终认证方式: {:?}\n", provider.credentials.auth_method));
-                            result.push_str(&format!("🔑 最终有 client_id: {}\n", provider.credentials.client_id.is_some()));
-                            result.push_str(&format!("🔒 最终有 client_secret: {}\n", provider.credentials.client_secret.is_some()));
+                            result.push_str(&format!(
+                                "📄 最终认证方式: {:?}\n",
+                                provider.credentials.auth_method
+                            ));
+                            result.push_str(&format!(
+                                "🔑 最终有 client_id: {}\n",
+                                provider.credentials.client_id.is_some()
+                            ));
+                            result.push_str(&format!(
+                                "🔒 最终有 client_secret: {}\n",
+                                provider.credentials.client_secret.is_some()
+                            ));
 
                             let detected_method = provider.detect_auth_method();
                             result.push_str(&format!("🎯 检测到的认证方式: {}\n", detected_method));
@@ -608,8 +704,14 @@ pub async fn test_user_credentials() -> Result<String, String> {
                             result.push_str("\n🚀 尝试刷新 token...\n");
                             match provider.refresh_token().await {
                                 Ok(token) => {
-                                    result.push_str(&format!("✅ Token 刷新成功! Token 长度: {}\n", token.len()));
-                                    result.push_str(&format!("🎫 Token 前缀: {}...\n", &token[..std::cmp::min(50, token.len())]));
+                                    result.push_str(&format!(
+                                        "✅ Token 刷新成功! Token 长度: {}\n",
+                                        token.len()
+                                    ));
+                                    result.push_str(&format!(
+                                        "🎫 Token 前缀: {}...\n",
+                                        &token[..std::cmp::min(50, token.len())]
+                                    ));
                                 }
                                 Err(e) => {
                                     result.push_str(&format!("❌ Token 刷新失败: {}\n", e));

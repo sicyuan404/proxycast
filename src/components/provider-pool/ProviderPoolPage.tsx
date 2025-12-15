@@ -27,6 +27,7 @@ const allProviderTypes: PoolProviderType[] = [
   "kiro",
   "gemini",
   "qwen",
+  "antigravity",
   "openai",
   "claude",
 ];
@@ -35,6 +36,7 @@ const providerLabels: Record<PoolProviderType, string> = {
   kiro: "Kiro (AWS)",
   gemini: "Gemini (Google)",
   qwen: "Qwen (阿里)",
+  antigravity: "Antigravity (Gemini 3 Pro)",
   openai: "OpenAI",
   claude: "Claude (Anthropic)",
 };
@@ -92,7 +94,11 @@ export const ProviderPoolPage = forwardRef<ProviderPoolPageRef>(
       try {
         await toggleCredential(credential.uuid, !credential.is_disabled);
       } catch (e) {
-        showError(e instanceof Error ? e.message : String(e), "toggle", credential.uuid);
+        showError(
+          e instanceof Error ? e.message : String(e),
+          "toggle",
+          credential.uuid,
+        );
       }
     };
 
@@ -113,7 +119,11 @@ export const ProviderPoolPage = forwardRef<ProviderPoolPageRef>(
           showError(result.message || "健康检查未通过", "health_check", uuid);
         }
       } catch (e) {
-        showError(e instanceof Error ? e.message : String(e), "health_check", uuid);
+        showError(
+          e instanceof Error ? e.message : String(e),
+          "health_check",
+          uuid,
+        );
       }
     };
 
@@ -138,7 +148,11 @@ export const ProviderPoolPage = forwardRef<ProviderPoolPageRef>(
         await refreshCredentialToken(uuid);
         showSuccess("Token 刷新成功！", uuid);
       } catch (e) {
-        showError(e instanceof Error ? e.message : String(e), "refresh_token", uuid);
+        showError(
+          e instanceof Error ? e.message : String(e),
+          "refresh_token",
+          uuid,
+        );
       }
     };
 
@@ -302,7 +316,7 @@ export const ProviderPoolPage = forwardRef<ProviderPoolPageRef>(
                 </button>
               </div>
             ) : (
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+              <div className="flex flex-col gap-4">
                 {currentCredentials.map((credential) => (
                   <CredentialCard
                     key={credential.uuid}

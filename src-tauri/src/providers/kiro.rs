@@ -120,8 +120,14 @@ impl KiroProvider {
         // 如果有 clientIdHash，尝试加载对应的 client_id 和 client_secret
         if let Some(hash) = &merged.client_id_hash {
             let hash_file_path = dir.join(format!("{}.json", hash));
-            tracing::info!("[KIRO] 检查 clientIdHash 文件: {}", hash_file_path.display());
-            if tokio::fs::try_exists(&hash_file_path).await.unwrap_or(false) {
+            tracing::info!(
+                "[KIRO] 检查 clientIdHash 文件: {}",
+                hash_file_path.display()
+            );
+            if tokio::fs::try_exists(&hash_file_path)
+                .await
+                .unwrap_or(false)
+            {
                 if let Ok(content) = tokio::fs::read_to_string(&hash_file_path).await {
                     if let Ok(creds) = serde_json::from_str::<KiroCredentials>(&content) {
                         tracing::info!(
@@ -132,13 +138,23 @@ impl KiroProvider {
                         );
                         merge_credentials(&mut merged, &creds);
                     } else {
-                        tracing::error!("[KIRO] 无法解析 clientIdHash 文件: {}", hash_file_path.display());
+                        tracing::error!(
+                            "[KIRO] 无法解析 clientIdHash 文件: {}",
+                            hash_file_path.display()
+                        );
                     }
                 } else {
-                    tracing::error!("[KIRO] 无法读取 clientIdHash 文件: {}", hash_file_path.display());
+                    tracing::error!(
+                        "[KIRO] 无法读取 clientIdHash 文件: {}",
+                        hash_file_path.display()
+                    );
                 }
             } else {
-                tracing::warn!("[KIRO] clientIdHash {} 指向的文件不存在: {}", hash, hash_file_path.display());
+                tracing::warn!(
+                    "[KIRO] clientIdHash {} 指向的文件不存在: {}",
+                    hash,
+                    hash_file_path.display()
+                );
             }
         } else {
             tracing::info!("[KIRO] 没有 clientIdHash 字段");
@@ -181,7 +197,10 @@ impl KiroProvider {
         // 加载完成后，智能检测并更新认证方式（如果需要）
         let detected_auth_method = self.detect_auth_method();
         if self.credentials.auth_method.as_deref().unwrap_or("social") != detected_auth_method {
-            tracing::info!("[KIRO] 加载后检测到需要调整认证方式为: {}", detected_auth_method);
+            tracing::info!(
+                "[KIRO] 加载后检测到需要调整认证方式为: {}",
+                detected_auth_method
+            );
             self.set_auth_method(&detected_auth_method);
         }
 
@@ -229,7 +248,10 @@ impl KiroProvider {
                 hash_file_path.display()
             );
 
-            if tokio::fs::try_exists(&hash_file_path).await.unwrap_or(false) {
+            if tokio::fs::try_exists(&hash_file_path)
+                .await
+                .unwrap_or(false)
+            {
                 if let Ok(content) = tokio::fs::read_to_string(&hash_file_path).await {
                     // 使用 serde_json::Value 来更灵活地解析，因为 hash 文件可能包含额外字段
                     if let Ok(json_value) = serde_json::from_str::<serde_json::Value>(&content) {
@@ -285,7 +307,8 @@ impl KiroProvider {
                 let mut entries = tokio::fs::read_dir(dir).await?;
                 while let Some(entry) = entries.next_entry().await? {
                     let file_path = entry.path();
-                    if file_path.extension().map(|e| e == "json").unwrap_or(false) && file_path != path
+                    if file_path.extension().map(|e| e == "json").unwrap_or(false)
+                        && file_path != path
                     {
                         if let Ok(content) = tokio::fs::read_to_string(&file_path).await {
                             if let Ok(creds) = serde_json::from_str::<KiroCredentials>(&content) {
@@ -318,7 +341,10 @@ impl KiroProvider {
         // 加载完成后，智能检测并更新认证方式（如果需要）
         let detected_auth_method = self.detect_auth_method();
         if self.credentials.auth_method.as_deref().unwrap_or("social") != detected_auth_method {
-            tracing::info!("[KIRO] 从路径加载后检测到需要调整认证方式为: {}", detected_auth_method);
+            tracing::info!(
+                "[KIRO] 从路径加载后检测到需要调整认证方式为: {}",
+                detected_auth_method
+            );
             self.set_auth_method(&detected_auth_method);
         }
 
@@ -354,13 +380,10 @@ impl KiroProvider {
 
     /// 从凭证文件中提取 region 信息的静态方法，供健康检查服务使用
     pub fn extract_region_from_creds(creds_content: &str) -> Result<String, String> {
-        let creds: serde_json::Value = serde_json::from_str(creds_content)
-            .map_err(|e| format!("解析凭证失败: {}", e))?;
+        let creds: serde_json::Value =
+            serde_json::from_str(creds_content).map_err(|e| format!("解析凭证失败: {}", e))?;
 
-        let region = creds["region"]
-            .as_str()
-            .unwrap_or("us-east-1")
-            .to_string();
+        let region = creds["region"].as_str().unwrap_or("us-east-1").to_string();
 
         Ok(region)
     }
@@ -444,7 +467,8 @@ impl KiroProvider {
         self.validate_refresh_token()?;
 
         tracing::info!("[KIRO] 开始 Token 刷新流程");
-        tracing::info!("[KIRO] 当前凭证状态: has_client_id={}, has_client_secret={}, auth_method={:?}",
+        tracing::info!(
+            "[KIRO] 当前凭证状态: has_client_id={}, has_client_secret={}, auth_method={:?}",
             self.credentials.client_id.is_some(),
             self.credentials.client_secret.is_some(),
             self.credentials.auth_method
@@ -465,16 +489,25 @@ impl KiroProvider {
         // 如果检测到的方式与配置中的不同，更新配置
         let current_auth = self.credentials.auth_method.as_deref().unwrap_or("social");
         if current_auth != detected_auth_method {
-            tracing::info!("[KIRO] 认证方式从 {} 切换到 {}", current_auth, detected_auth_method);
+            tracing::info!(
+                "[KIRO] 认证方式从 {} 切换到 {}",
+                current_auth,
+                detected_auth_method
+            );
             self.set_auth_method(&detected_auth_method);
         }
 
         let auth_method = detected_auth_method.to_lowercase();
         let refresh_url = self.get_refresh_url();
-        
-        tracing::debug!("[KIRO] refresh_token: auth_method={}, refresh_url={}", auth_method, refresh_url);
-        tracing::debug!("[KIRO] has_client_id={}, has_client_secret={}", 
-            self.credentials.client_id.is_some(), 
+
+        tracing::debug!(
+            "[KIRO] refresh_token: auth_method={}, refresh_url={}",
+            auth_method,
+            refresh_url
+        );
+        tracing::debug!(
+            "[KIRO] has_client_id={}, has_client_secret={}",
+            self.credentials.client_id.is_some(),
             self.credentials.client_secret.is_some()
         );
 
@@ -521,11 +554,11 @@ impl KiroProvider {
         };
 
         tracing::info!("[KIRO] Token 刷新响应状态: {}", resp.status());
-        
+
         if !resp.status().is_success() {
             let status = resp.status();
             let body_text = resp.text().await.unwrap_or_default();
-            
+
             tracing::warn!("[KIRO] Token 刷新失败: {} - {}", status, body_text);
 
             // 根据具体的HTTP状态码提供更友好的错误信息
@@ -575,7 +608,10 @@ impl KiroProvider {
 
     pub async fn save_credentials(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
         // 使用加载时的路径或默认路径
-        let path = self.creds_path.clone().unwrap_or_else(Self::default_creds_path);
+        let path = self
+            .creds_path
+            .clone()
+            .unwrap_or_else(Self::default_creds_path);
 
         // 读取现有文件内容
         let mut existing: serde_json::Value = if tokio::fs::try_exists(&path).await.unwrap_or(false)

@@ -18,6 +18,7 @@ pub fn get_prompt_file_path(app: &AppType) -> Option<PathBuf> {
 }
 
 /// Get the prompt file name for an app
+#[allow(dead_code)]
 pub fn get_prompt_filename(app: &AppType) -> &'static str {
     match app {
         AppType::Claude => "CLAUDE.md",
@@ -67,6 +68,7 @@ pub fn write_live_prompt(app: &AppType, content: &str) -> Result<(), String> {
 }
 
 /// Delete the live prompt file
+#[allow(dead_code)]
 pub fn delete_live_prompt(app: &AppType) -> Result<(), String> {
     let path = get_prompt_file_path(app).ok_or("Cannot determine prompt file path")?;
 

@@ -1,0 +1,54 @@
+#!/bin/sh
+
+echo "🔍 Running pre-commit checks..."
+
+# 前端检查
+echo "📦 Checking frontend..."
+
+# TypeScript 检查
+echo "  → TypeScript check..."
+npx tsc --noEmit
+if [ $? -ne 0 ]; then
+    echo "❌ TypeScript check failed!"
+    exit 1
+fi
+
+# ESLint 检查
+echo "  → ESLint check..."
+npm run lint
+if [ $? -ne 0 ]; then
+    echo "❌ ESLint check failed!"
+    exit 1
+fi
+
+# Prettier 检查
+echo "  → Prettier check..."
+npx prettier --check "src/**/*.{ts,tsx,css}"
+if [ $? -ne 0 ]; then
+    echo "❌ Prettier check failed! Run 'npm run format' to fix."
+    exit 1
+fi
+
+# Rust 检查
+echo "🦀 Checking Rust..."
+
+# Rust 格式检查
+echo "  → Rust format check..."
+cd src-tauri
+cargo fmt --all -- --check
+if [ $? -ne 0 ]; then
+    echo "❌ Rust format check failed! Run 'cargo fmt' in src-tauri to fix."
+    exit 1
+fi
+
+# Rust 编译检查 (不使用严格的 clippy)
+echo "  → Rust build check..."
+cargo check --all-targets
+if [ $? -ne 0 ]; then
+    echo "❌ Rust build check failed!"
+    exit 1
+fi
+
+cd ..
+
+echo "✅ All pre-commit checks passed!"
