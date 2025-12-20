@@ -8,6 +8,9 @@ use std::path::PathBuf;
 use tauri::AppHandle;
 use tauri_plugin_autostart::ManagerExt;
 
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConfigStatus {
     pub exists: bool,
@@ -85,6 +88,7 @@ pub async fn open_config_folder(_handle: AppHandle, app_type: String) -> Result<
     {
         std::process::Command::new("explorer")
             .arg(&config_dir)
+            .creation_flags(0x08000000) // CREATE_NO_WINDOW
             .spawn()
             .map_err(|e| e.to_string())?;
     }
@@ -112,6 +116,22 @@ pub async fn get_tool_versions() -> Result<Vec<ToolVersion>, String> {
     let mut versions = Vec::new();
 
     // Check Claude Code version
+    #[cfg(target_os = "windows")]
+    let claude_version = std::process::Command::new("claude")
+        .arg("--version")
+        .creation_flags(0x08000000) // CREATE_NO_WINDOW
+        .output()
+        .ok()
+        .and_then(|o| {
+            if o.status.success() {
+                String::from_utf8(o.stdout).ok()
+            } else {
+                None
+            }
+        })
+        .map(|s| s.trim().to_string());
+
+    #[cfg(not(target_os = "windows"))]
     let claude_version = std::process::Command::new("claude")
         .arg("--version")
         .output()
@@ -132,6 +152,22 @@ pub async fn get_tool_versions() -> Result<Vec<ToolVersion>, String> {
     });
 
     // Check Codex version
+    #[cfg(target_os = "windows")]
+    let codex_version = std::process::Command::new("codex")
+        .arg("--version")
+        .creation_flags(0x08000000) // CREATE_NO_WINDOW
+        .output()
+        .ok()
+        .and_then(|o| {
+            if o.status.success() {
+                String::from_utf8(o.stdout).ok()
+            } else {
+                None
+            }
+        })
+        .map(|s| s.trim().to_string());
+
+    #[cfg(not(target_os = "windows"))]
     let codex_version = std::process::Command::new("codex")
         .arg("--version")
         .output()
@@ -152,6 +188,22 @@ pub async fn get_tool_versions() -> Result<Vec<ToolVersion>, String> {
     });
 
     // Check Gemini CLI version
+    #[cfg(target_os = "windows")]
+    let gemini_version = std::process::Command::new("gemini")
+        .arg("--version")
+        .creation_flags(0x08000000) // CREATE_NO_WINDOW
+        .output()
+        .ok()
+        .and_then(|o| {
+            if o.status.success() {
+                String::from_utf8(o.stdout).ok()
+            } else {
+                None
+            }
+        })
+        .map(|s| s.trim().to_string());
+
+    #[cfg(not(target_os = "windows"))]
     let gemini_version = std::process::Command::new("gemini")
         .arg("--version")
         .output()
@@ -559,6 +611,7 @@ pub async fn open_auth_dir(path: String) -> Result<bool, String> {
     {
         std::process::Command::new("explorer")
             .arg(&expanded)
+            .creation_flags(0x08000000) // CREATE_NO_WINDOW
             .spawn()
             .map_err(|e| e.to_string())?;
     }

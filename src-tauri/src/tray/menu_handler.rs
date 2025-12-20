@@ -12,6 +12,9 @@ use tauri::{AppHandle, Emitter, Manager, Runtime};
 use tauri_plugin_autostart::ManagerExt;
 use tracing::{debug, error, info, warn};
 
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
 /// 菜单事件类型
 ///
 /// 用于前端监听的事件名称
@@ -191,6 +194,7 @@ fn handle_copy_api_address<R: Runtime>(app: &AppHandle<R>) {
                     {
                         let _ = std::process::Command::new("cmd")
                             .args(["/C", &format!("echo {} | clip", api_address)])
+                            .creation_flags(0x08000000) // CREATE_NO_WINDOW
                             .spawn();
                         info!("[托盘] API 地址已复制到剪贴板: {}", api_address);
                     }
