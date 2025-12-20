@@ -16,7 +16,7 @@
 ## 🤔 这个工具能帮你做什么？
 
 **场景一：换个更好用的 IDE**
-> 我有 Kiro 账号，每月免费用 Claude Sonnet 4.5，但 Kiro IDE 不太顺手。我想用 Claude Code 或 Cursor 来写代码，但又不想额外付费买 API。
+> 我有 Kiro 账号，可以用 Claude 系列模型，但 Kiro IDE 不太顺手。我想用 Claude Code 或 Cursor 来写代码，但又不想额外付费买 API。
 
 **场景二：把额度分享给其他工具**
 > Claude Code 这个月额度还剩很多，与其浪费不如转给 Cherry Studio 聊天用，或者给我的 AI Agent 项目提供 API 接口。
@@ -24,7 +24,7 @@
 **场景三：统一管理多个 AI 账号**
 > 我有 Kiro、Gemini CLI、通义千问好几个账号，想统一管理，哪个有额度就用哪个。
 
-**ProxyCast 就是解决这些问题的工具** —— 它把你已有的 AI 客户端凭证转换成标准 OpenAI API，让任何支持 OpenAI 接口的工具都能用上你的免费额度。
+**ProxyCast 就是解决这些问题的工具** —— 它把你已有的 AI 客户端凭证转换成标准 OpenAI API，让任何支持 OpenAI 接口的工具都能使用。
 
 ---
 
@@ -49,12 +49,11 @@
 ## ✨ 核心特性
 
 ### 🎯 多 Provider 统一管理
-- **Kiro Claude** - 通过 OAuth 免费使用 Claude Sonnet 4.5
-- **Gemini CLI** - 通过 OAuth 突破 Gemini 免费限制
+- **Kiro** - 通过 OAuth 使用 Claude 系列模型（Opus 4.5、Sonnet 4.5、Sonnet 4、Haiku 4.5）
+- **Gemini CLI** - 通过 OAuth 使用 Gemini 模型
 - **Gemini API Key** - 多账号负载均衡，支持模型排除
 - **通义千问** - 通过 OAuth 使用 Qwen3 Coder Plus
-- **OpenAI Codex** - 通过 OAuth 使用 GPT 模型
-- **iFlow** - 支持 OAuth 和 Cookie 两种认证方式
+- **Antigravity** - 通过 OAuth 使用 Claude 模型
 - **Vertex AI** - Google Cloud AI 平台，支持模型别名
 - **OpenAI 自定义** - 配置自定义 OpenAI 兼容 API
 - **Claude 自定义** - 配置自定义 Claude API
@@ -79,9 +78,9 @@
 - **远程管理 API** - 通过 API 远程管理配置和凭证
 - **访问控制** - 支持 localhost 限制和密钥认证
 
-### 🔌 Amp CLI 集成
+### 🔌 多路由支持
 - 支持 `/api/provider/{provider}/v1/*` 路由模式
-- 模型映射 - 将不可用模型映射到可用替代
+- 模型映射 - 将请求模型映射到 Provider 支持的模型
 - 管理端点代理 - 代理认证和账户功能
 
 ### 🌐 完整 API 兼容
@@ -97,25 +96,25 @@
 ## 📸 界面截图
 
 ### Dashboard - 服务控制与 API 测试
-![Dashboard](docs/images/420984ac-8287-44c6-b209-bbffd59dc0eb.png)
+![Dashboard](docs/images/067c7d64-e116-4a30-b533-748873166f37.png)
 
 ### 凭证池 - 多凭证管理
-![Provider Pool](docs/images/44dfe29b-ef1e-4fab-82cc-8fbb3d5ae673.png)
+![Provider Pool](docs/images/151b4355-821c-4bda-a731-c4367b6b8716.png)
 
 ### API Server - 路由与日志
-![API Server](docs/images/54223543-bfb1-4a96-a9d8-a1b9b2f9c154.png)
+![API Server](docs/images/25eb018a-5be2-4f82-ba22-e68f39160cac.png)
 
 ### 设置页面 - 服务器配置
-![Settings](docs/images/83270842-209e-4a36-98e3-607642273806.png)
+![Settings](docs/images/943663ed-b17c-4b32-a74c-c0243ffb3dea.png)
 
 ### AI Clients - 客户端配置
-![AI Clients](docs/images/c9d36815-a29a-437e-9f26-872ed0949921.png)
+![AI Clients](docs/images/aee62eb5-3aeb-4454-b14d-24b1d5f9a0fe.png)
 
 ### MCP 服务器管理
-![MCP](docs/images/fc54f689-b092-4180-a531-a41e310c42cb.png)
+![MCP](docs/images/c7d8236b-ea6c-4496-ada5-288cd0a01738.png)
 
 ### Prompts 管理
-![Prompts](docs/images/ff6d0f51-a703-4642-a4ab-2b9512b332af.png)
+![Prompts](docs/images/ffc70018-aa5f-4738-883d-045614488608.png)
 
 ---
 
@@ -127,16 +126,7 @@
 
 - **macOS (Apple Silicon)**: `ProxyCast_x.x.x_aarch64.dmg`
 - **Windows (x64)**: `ProxyCast_x.x.x_x64-setup.exe`
-
-### 凭证文件位置
-
-| Provider | 默认路径 | 说明 |
-|----------|---------|------|
-| **Kiro** | `~/.aws/sso/cache/kiro-auth-token.json` | Kiro OAuth Token |
-| **Gemini** | `~/.gemini/oauth_creds.json` | Gemini CLI OAuth |
-| **Qwen** | `~/.qwen/oauth_creds.json` | 通义千问 OAuth |
-
-> **提示**: `~` 表示用户主目录（macOS: `/Users/用户名`，Windows: `C:\Users\用户名`）
+- **Ubuntu/Debian (x64)**: `ProxyCast_x.x.x_amd64.deb`
 
 ### 使用步骤
 
