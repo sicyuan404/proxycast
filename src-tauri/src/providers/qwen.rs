@@ -316,3 +316,340 @@ impl QwenProvider {
         Ok(resp)
     }
 }
+
+// ============================================================================
+// Device Code Flow 登录功能（与 CLIProxyAPI 对齐）
+// ============================================================================
+
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+use rand::RngCore;
+use sha2::{Digest, Sha256};
+use uuid::Uuid;
+
+// Device Code Flow 端点
+const QWEN_DEVICE_CODE_URL: &str = "https://chat.qwen.ai/api/v1/oauth2/device/code";
+const QWEN_OAUTH_SCOPE: &str = "openid profile email model.completion";
+const QWEN_DEVICE_GRANT_TYPE: &str = "urn:ietf:params:oauth:grant-type:device_code";
+
+/// Device Code Flow 响应
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeviceCodeResponse {
+    /// 设备码（用于轮询）
+    #[serde(alias = "deviceCode")]
+    pub device_code: String,
+    /// 用户码（用户在浏览器中输入）
+    #[serde(alias = "userCode")]
+    pub user_code: String,
+    /// 验证 URL
+    #[serde(alias = "verificationUri")]
+    pub verification_uri: String,
+    /// 完整验证 URL（包含 user_code）
+    #[serde(default, alias = "verificationUriComplete")]
+    pub verification_uri_complete: Option<String>,
+    /// 过期时间（秒）
+    #[serde(alias = "expiresIn")]
+    pub expires_in: i64,
+    /// 轮询间隔（秒），默认 5 秒
+    #[serde(default = "default_interval")]
+    pub interval: i64,
+}
+
+fn default_interval() -> i64 {
+    5
+}
+
+/// Qwen OAuth 登录结果
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QwenOAuthResult {
+    pub credentials: QwenCredentials,
+    pub creds_file_path: String,
+}
+
+/// PKCE 代码生成
+fn generate_pkce_pair() -> Result<(String, String), Box<dyn Error + Send + Sync>> {
+    let mut bytes = [0u8; 32];
+    rand::thread_rng().fill_bytes(&mut bytes);
+    let code_verifier = URL_SAFE_NO_PAD.encode(bytes);
+
+    let mut hasher = Sha256::new();
+    hasher.update(code_verifier.as_bytes());
+    let hash = hasher.finalize();
+    let code_challenge = URL_SAFE_NO_PAD.encode(hash);
+
+    Ok((code_verifier, code_challenge))
+}
+
+/// 发起 Device Code Flow
+pub async fn initiate_device_flow(
+    client: &Client,
+) -> Result<(DeviceCodeResponse, String), Box<dyn Error + Send + Sync>> {
+    let (code_verifier, code_challenge) = generate_pkce_pair()?;
+
+    let params = [
+        ("client_id", QWEN_CLIENT_ID),
+        ("scope", QWEN_OAUTH_SCOPE),
+        ("code_challenge", code_challenge.as_str()),
+        ("code_challenge_method", "S256"),
+    ];
+
+    let resp = client
+        .post(QWEN_DEVICE_CODE_URL)
+        .header("Content-Type", "application/x-www-form-urlencoded")
+        .header("Accept", "application/json")
+        .form(&params)
+        .send()
+        .await?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        return Err(format!("Device code 请求失败: {} - {}", status, body).into());
+    }
+
+    // 先获取响应体文本，以便在解析失败时提供详细错误信息
+    let body = resp.text().await?;
+    tracing::debug!("[QWEN] Device Code 响应: {}", body);
+
+    let device_response: DeviceCodeResponse = serde_json::from_str(&body)
+        .map_err(|e| format!("解析 Device Code 响应失败: {} - 响应内容: {}", e, body))?;
+
+    if device_response.device_code.is_empty() {
+        return Err("Device code 响应中没有 device_code".into());
+    }
+
+    tracing::info!(
+        "[QWEN] Device Code Flow 已启动，user_code: {}, verification_uri: {}",
+        device_response.user_code,
+        device_response.verification_uri
+    );
+
+    Ok((device_response, code_verifier))
+}
+
+/// 轮询 Token 端点
+pub async fn poll_for_token(
+    client: &Client,
+    device_code: &str,
+    code_verifier: &str,
+    interval: u64,
+    max_attempts: u32,
+) -> Result<QwenCredentials, Box<dyn Error + Send + Sync>> {
+    let poll_interval = std::time::Duration::from_secs(interval.max(5));
+
+    for attempt in 0..max_attempts {
+        if attempt > 0 {
+            tokio::time::sleep(poll_interval).await;
+        }
+
+        tracing::debug!("[QWEN] 轮询 Token，第 {} 次尝试", attempt + 1);
+
+        let params = [
+            ("grant_type", QWEN_DEVICE_GRANT_TYPE),
+            ("client_id", QWEN_CLIENT_ID),
+            ("device_code", device_code),
+            ("code_verifier", code_verifier),
+        ];
+
+        let resp = client
+            .post(QWEN_TOKEN_URL)
+            .header("Content-Type", "application/x-www-form-urlencoded")
+            .header("Accept", "application/json")
+            .form(&params)
+            .send()
+            .await;
+
+        let resp = match resp {
+            Ok(r) => r,
+            Err(e) => {
+                tracing::warn!("[QWEN] 轮询请求失败: {}", e);
+                continue;
+            }
+        };
+
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+
+        if status.is_success() {
+            // 成功获取 Token
+            let data: serde_json::Value = serde_json::from_str(&body)?;
+
+            let access_token = data["access_token"]
+                .as_str()
+                .ok_or("响应中没有 access_token")?
+                .to_string();
+            let refresh_token = data["refresh_token"].as_str().map(|s| s.to_string());
+            let token_type = data["token_type"].as_str().map(|s| s.to_string());
+            let resource_url = data["resource_url"].as_str().map(|s| s.to_string());
+            let expires_in = data["expires_in"].as_i64().unwrap_or(3600);
+
+            let expires_at = chrono::Utc::now() + chrono::Duration::seconds(expires_in);
+
+            let credentials = QwenCredentials {
+                access_token: Some(access_token),
+                refresh_token,
+                token_type,
+                resource_url,
+                expiry_date: Some(expires_at.timestamp_millis()),
+                expire: Some(expires_at.to_rfc3339()),
+                last_refresh: Some(chrono::Utc::now().to_rfc3339()),
+                cred_type: "qwen".to_string(),
+            };
+
+            tracing::info!("[QWEN] Token 获取成功");
+            return Ok(credentials);
+        }
+
+        // 解析错误响应
+        if let Ok(error_data) = serde_json::from_str::<serde_json::Value>(&body) {
+            let error_type = error_data["error"].as_str().unwrap_or("");
+
+            match error_type {
+                "authorization_pending" => {
+                    // 用户尚未完成授权，继续轮询
+                    tracing::debug!("[QWEN] 等待用户授权...");
+                    continue;
+                }
+                "slow_down" => {
+                    // 轮询太频繁，增加间隔
+                    tracing::debug!("[QWEN] 服务器要求降低轮询频率");
+                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                    continue;
+                }
+                "expired_token" => {
+                    return Err("Device code 已过期，请重新开始授权流程".into());
+                }
+                "access_denied" => {
+                    return Err("用户拒绝了授权请求".into());
+                }
+                _ => {
+                    let error_desc = error_data["error_description"]
+                        .as_str()
+                        .unwrap_or("未知错误");
+                    return Err(format!("Token 获取失败: {} - {}", error_type, error_desc).into());
+                }
+            }
+        }
+
+        // 其他错误
+        if status.as_u16() != 400 {
+            return Err(format!("Token 请求失败: {} - {}", status, body).into());
+        }
+    }
+
+    Err("授权超时，请重新开始授权流程".into())
+}
+
+/// 启动 Qwen Device Code Flow 登录
+pub async fn start_qwen_device_code_login() -> Result<QwenOAuthResult, Box<dyn Error + Send + Sync>>
+{
+    let client = Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()?;
+
+    // 发起 Device Code Flow
+    let (device_response, code_verifier) = initiate_device_flow(&client).await?;
+
+    // 打开浏览器
+    let verification_url = device_response
+        .verification_uri_complete
+        .as_ref()
+        .unwrap_or(&device_response.verification_uri);
+
+    tracing::info!("[QWEN] 打开浏览器进行授权: {}", verification_url);
+
+    if let Err(e) = open::that(verification_url) {
+        tracing::warn!("[QWEN] 无法打开浏览器: {}. 请手动打开 URL.", e);
+    }
+
+    // 轮询 Token
+    let credentials = poll_for_token(
+        &client,
+        &device_response.device_code,
+        &code_verifier,
+        device_response.interval as u64,
+        60, // 最多轮询 60 次（约 5 分钟）
+    )
+    .await?;
+
+    // 保存凭证到应用数据目录
+    let creds_dir = dirs::data_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("proxycast")
+        .join("credentials")
+        .join("qwen");
+
+    std::fs::create_dir_all(&creds_dir)?;
+
+    let uuid = Uuid::new_v4().to_string();
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let filename = format!("qwen_{}_{}.json", &uuid[..8], timestamp);
+    let creds_file_path = creds_dir.join(&filename);
+
+    let creds_json = serde_json::to_string_pretty(&credentials)?;
+    std::fs::write(&creds_file_path, &creds_json)?;
+
+    tracing::info!("[QWEN] 凭证已保存到: {:?}", creds_file_path);
+
+    Ok(QwenOAuthResult {
+        credentials,
+        creds_file_path: creds_file_path.to_string_lossy().to_string(),
+    })
+}
+
+/// 启动 Qwen Device Code Flow 并返回设备码信息（不自动打开浏览器）
+pub async fn start_qwen_device_code_and_get_info() -> Result<
+    (
+        DeviceCodeResponse,
+        impl std::future::Future<Output = Result<QwenOAuthResult, Box<dyn Error + Send + Sync>>>,
+    ),
+    Box<dyn Error + Send + Sync>,
+> {
+    let client = Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()?;
+
+    // 发起 Device Code Flow
+    let (device_response, code_verifier) = initiate_device_flow(&client).await?;
+
+    let device_code = device_response.device_code.clone();
+    let interval = device_response.interval as u64;
+
+    // 创建等待 future
+    let wait_future = async move {
+        // 轮询 Token
+        let credentials =
+            poll_for_token(&client, &device_code, &code_verifier, interval, 60).await?;
+
+        // 保存凭证到应用数据目录
+        let creds_dir = dirs::data_dir()
+            .unwrap_or_else(|| std::path::PathBuf::from("."))
+            .join("proxycast")
+            .join("credentials")
+            .join("qwen");
+
+        std::fs::create_dir_all(&creds_dir)?;
+
+        let uuid = Uuid::new_v4().to_string();
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let filename = format!("qwen_{}_{}.json", &uuid[..8], timestamp);
+        let creds_file_path = creds_dir.join(&filename);
+
+        let creds_json = serde_json::to_string_pretty(&credentials)?;
+        std::fs::write(&creds_file_path, &creds_json)?;
+
+        tracing::info!("[QWEN] 凭证已保存到: {:?}", creds_file_path);
+
+        Ok(QwenOAuthResult {
+            credentials,
+            creds_file_path: creds_file_path.to_string_lossy().to_string(),
+        })
+    };
+
+    Ok((device_response, wait_future))
+}

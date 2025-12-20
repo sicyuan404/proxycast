@@ -347,3 +347,366 @@ impl ClaudeOAuthProvider {
         format!("http://localhost:{}/callback", self.callback_port)
     }
 }
+
+// ============================================================================
+// OAuth 登录功能
+// ============================================================================
+
+use std::sync::Arc;
+use tokio::sync::oneshot;
+use uuid::Uuid;
+
+/// OAuth 登录成功后的凭证信息
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClaudeOAuthResult {
+    pub credentials: ClaudeOAuthCredentials,
+    pub creds_file_path: String,
+}
+
+/// 生成 Claude OAuth 授权 URL
+pub fn generate_claude_auth_url(port: u16, state: &str, code_challenge: &str) -> String {
+    let redirect_uri = format!("http://localhost:{}/oauth-callback", port);
+
+    let params = [
+        ("client_id", CLAUDE_CLIENT_ID),
+        ("response_type", "code"),
+        ("redirect_uri", redirect_uri.as_str()),
+        ("scope", "user:inference user:profile"),
+        ("state", state),
+        ("code_challenge", code_challenge),
+        ("code_challenge_method", "S256"),
+    ];
+
+    let query = params
+        .iter()
+        .map(|(k, v)| format!("{}={}", k, urlencoding::encode(v)))
+        .collect::<Vec<_>>()
+        .join("&");
+
+    format!("{}?{}", CLAUDE_AUTH_URL, query)
+}
+
+/// 用授权码交换 Token
+pub async fn exchange_claude_code_for_token(
+    client: &Client,
+    code: &str,
+    code_verifier: &str,
+    redirect_uri: &str,
+) -> Result<serde_json::Value, Box<dyn Error + Send + Sync>> {
+    let body = serde_json::json!({
+        "grant_type": "authorization_code",
+        "client_id": CLAUDE_CLIENT_ID,
+        "code": code,
+        "redirect_uri": redirect_uri,
+        "code_verifier": code_verifier
+    });
+
+    let resp = client
+        .post(CLAUDE_TOKEN_URL)
+        .header("Content-Type", "application/json")
+        .header("Accept", "application/json")
+        .json(&body)
+        .send()
+        .await?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        return Err(format!("Token 交换失败: {} - {}", status, body).into());
+    }
+
+    let data: serde_json::Value = resp.json().await?;
+    Ok(data)
+}
+
+/// OAuth 成功页面 HTML
+const CLAUDE_OAUTH_SUCCESS_HTML: &str = r#"<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>授权成功</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: linear-gradient(135deg, #d97706 0%, #b45309 100%); }
+        .container { text-align: center; background: white; padding: 40px 60px; border-radius: 16px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); }
+        h1 { color: #d97706; margin-bottom: 16px; }
+        p { color: #666; margin-bottom: 8px; }
+        .email { color: #333; font-weight: 500; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>✓ 授权成功</h1>
+        <p>Claude 账号已添加到 ProxyCast</p>
+        <p class="email">EMAIL_PLACEHOLDER</p>
+        <p style="margin-top: 20px; color: #999;">可以关闭此页面</p>
+    </div>
+</body>
+</html>"#;
+
+/// OAuth 失败页面 HTML
+const CLAUDE_OAUTH_ERROR_HTML: &str = r#"<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>授权失败</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); }
+        .container { text-align: center; background: white; padding: 40px 60px; border-radius: 16px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); }
+        h1 { color: #ef4444; margin-bottom: 16px; }
+        p { color: #666; }
+        .error { color: #ef4444; font-size: 14px; margin-top: 16px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>✗ 授权失败</h1>
+        <p>ERROR_PLACEHOLDER</p>
+        <p style="margin-top: 20px; color: #999;">请关闭此页面后重试</p>
+    </div>
+</body>
+</html>"#;
+
+/// 启动 OAuth 服务器并返回授权 URL（不打开浏览器）
+pub async fn start_claude_oauth_server_and_get_url() -> Result<
+    (
+        String,
+        impl std::future::Future<Output = Result<ClaudeOAuthResult, Box<dyn Error + Send + Sync>>>,
+    ),
+    Box<dyn Error + Send + Sync>,
+> {
+    use axum::{extract::Query, response::Html, routing::get, Router};
+    use std::collections::HashMap;
+    use tokio::net::TcpListener;
+
+    let client = Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()?;
+
+    // 生成 PKCE codes
+    let pkce_codes = PKCECodes::generate()?;
+    let code_verifier = pkce_codes.code_verifier.clone();
+    let code_challenge = pkce_codes.code_challenge.clone();
+
+    // 生成随机 state
+    let state = Uuid::new_v4().to_string();
+    let state_clone = state.clone();
+
+    // 创建 channel 用于接收回调结果
+    let (tx, rx) = oneshot::channel::<Result<ClaudeOAuthResult, String>>();
+    let tx = Arc::new(tokio::sync::Mutex::new(Some(tx)));
+
+    // 绑定到随机端口
+    let listener = TcpListener::bind("127.0.0.1:0").await?;
+    let port = listener.local_addr()?.port();
+
+    let redirect_uri = format!("http://localhost:{}/oauth-callback", port);
+    let redirect_uri_clone = redirect_uri.clone();
+
+    // 生成授权 URL
+    let auth_url = generate_claude_auth_url(port, &state, &code_challenge);
+
+    tracing::info!(
+        "[Claude OAuth] 服务器启动在端口 {}, 授权 URL: {}",
+        port,
+        auth_url
+    );
+
+    // 构建路由
+    let app = Router::new().route(
+        "/oauth-callback",
+        get(move |Query(params): Query<HashMap<String, String>>| {
+            let tx = tx.clone();
+            let client = client.clone();
+            let state_expected = state_clone.clone();
+            let redirect_uri = redirect_uri_clone.clone();
+            let code_verifier = code_verifier.clone();
+
+            async move {
+                let code = params.get("code");
+                let returned_state = params.get("state");
+                let error = params.get("error");
+
+                // 检查错误
+                if let Some(err) = error {
+                    let html = CLAUDE_OAUTH_ERROR_HTML.replace("ERROR_PLACEHOLDER", err);
+                    if let Some(sender) = tx.lock().await.take() {
+                        let _ = sender.send(Err(format!("OAuth 错误: {}", err)));
+                    }
+                    return Html(html);
+                }
+
+                // 检查 state
+                if returned_state.map(|s| s.as_str()) != Some(&state_expected) {
+                    let html =
+                        CLAUDE_OAUTH_ERROR_HTML.replace("ERROR_PLACEHOLDER", "State 验证失败");
+                    if let Some(sender) = tx.lock().await.take() {
+                        let _ = sender.send(Err("State 验证失败".to_string()));
+                    }
+                    return Html(html);
+                }
+
+                // 检查 code
+                let code = match code {
+                    Some(c) => c,
+                    None => {
+                        let html =
+                            CLAUDE_OAUTH_ERROR_HTML.replace("ERROR_PLACEHOLDER", "未收到授权码");
+                        if let Some(sender) = tx.lock().await.take() {
+                            let _ = sender.send(Err("未收到授权码".to_string()));
+                        }
+                        return Html(html);
+                    }
+                };
+
+                // 交换 Token
+                let token_result =
+                    exchange_claude_code_for_token(&client, code, &code_verifier, &redirect_uri)
+                        .await;
+                let token_data = match token_result {
+                    Ok(data) => data,
+                    Err(e) => {
+                        let html =
+                            CLAUDE_OAUTH_ERROR_HTML.replace("ERROR_PLACEHOLDER", &e.to_string());
+                        if let Some(sender) = tx.lock().await.take() {
+                            let _ = sender.send(Err(e.to_string()));
+                        }
+                        return Html(html);
+                    }
+                };
+
+                let access_token = token_data["access_token"].as_str().unwrap_or_default();
+                let refresh_token = token_data["refresh_token"].as_str().map(|s| s.to_string());
+                let expires_in = token_data["expires_in"].as_i64();
+
+                // 从响应中提取用户邮箱
+                let email = token_data["account"]["email_address"]
+                    .as_str()
+                    .map(|s| s.to_string());
+
+                // 构建凭证
+                let now = chrono::Utc::now();
+                let credentials = ClaudeOAuthCredentials {
+                    access_token: Some(access_token.to_string()),
+                    refresh_token,
+                    email: email.clone(),
+                    expire: expires_in.map(|e| (now + chrono::Duration::seconds(e)).to_rfc3339()),
+                    last_refresh: Some(now.to_rfc3339()),
+                    cred_type: "claude_oauth".to_string(),
+                };
+
+                // 保存凭证到应用数据目录
+                let creds_dir = dirs::data_dir()
+                    .unwrap_or_else(|| std::path::PathBuf::from("."))
+                    .join("proxycast")
+                    .join("credentials")
+                    .join("claude_oauth");
+
+                if let Err(e) = std::fs::create_dir_all(&creds_dir) {
+                    let html = CLAUDE_OAUTH_ERROR_HTML
+                        .replace("ERROR_PLACEHOLDER", &format!("创建目录失败: {}", e));
+                    if let Some(sender) = tx.lock().await.take() {
+                        let _ = sender.send(Err(format!("创建目录失败: {}", e)));
+                    }
+                    return Html(html);
+                }
+
+                // 生成唯一文件名
+                let uuid = Uuid::new_v4().to_string();
+                let timestamp = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs();
+                let filename = format!("claude_oauth_{}_{}.json", &uuid[..8], timestamp);
+                let creds_file_path = creds_dir.join(&filename);
+
+                // 保存凭证
+                let creds_json = match serde_json::to_string_pretty(&credentials) {
+                    Ok(json) => json,
+                    Err(e) => {
+                        let html = CLAUDE_OAUTH_ERROR_HTML
+                            .replace("ERROR_PLACEHOLDER", &format!("序列化凭证失败: {}", e));
+                        if let Some(sender) = tx.lock().await.take() {
+                            let _ = sender.send(Err(format!("序列化凭证失败: {}", e)));
+                        }
+                        return Html(html);
+                    }
+                };
+
+                if let Err(e) = std::fs::write(&creds_file_path, &creds_json) {
+                    let html = CLAUDE_OAUTH_ERROR_HTML
+                        .replace("ERROR_PLACEHOLDER", &format!("保存凭证失败: {}", e));
+                    if let Some(sender) = tx.lock().await.take() {
+                        let _ = sender.send(Err(format!("保存凭证失败: {}", e)));
+                    }
+                    return Html(html);
+                }
+
+                tracing::info!("[Claude OAuth] 凭证已保存到: {:?}", creds_file_path);
+
+                // 发送成功结果
+                let result = ClaudeOAuthResult {
+                    credentials,
+                    creds_file_path: creds_file_path.to_string_lossy().to_string(),
+                };
+
+                if let Some(sender) = tx.lock().await.take() {
+                    let _ = sender.send(Ok(result));
+                }
+
+                // 返回成功页面
+                let html = CLAUDE_OAUTH_SUCCESS_HTML.replace(
+                    "EMAIL_PLACEHOLDER",
+                    &email.unwrap_or_else(|| "未知邮箱".to_string()),
+                );
+                Html(html)
+            }
+        }),
+    );
+
+    // 启动服务器
+    let server = axum::serve(listener, app);
+
+    // 创建等待 future
+    let wait_future = async move {
+        // 设置超时（5 分钟）
+        let timeout = tokio::time::timeout(std::time::Duration::from_secs(300), async {
+            // 启动服务器（在后台运行）
+            tokio::spawn(async move {
+                if let Err(e) = server.await {
+                    tracing::error!("[Claude OAuth] 服务器错误: {}", e);
+                }
+            });
+
+            // 等待回调结果
+            match rx.await {
+                Ok(result) => result.map_err(|e| {
+                    Box::new(std::io::Error::new(std::io::ErrorKind::Other, e))
+                        as Box<dyn Error + Send + Sync>
+                }),
+                Err(_) => Err("OAuth 回调通道关闭".into()),
+            }
+        });
+
+        match timeout.await {
+            Ok(result) => result,
+            Err(_) => Err("OAuth 登录超时（5分钟）".into()),
+        }
+    };
+
+    Ok((auth_url, wait_future))
+}
+
+/// 启动 Claude OAuth 登录流程（自动打开浏览器）
+pub async fn start_claude_oauth_login() -> Result<ClaudeOAuthResult, Box<dyn Error + Send + Sync>> {
+    let (auth_url, wait_future) = start_claude_oauth_server_and_get_url().await?;
+
+    tracing::info!("[Claude OAuth] 打开浏览器进行授权: {}", auth_url);
+
+    // 打开浏览器
+    if let Err(e) = open::that(&auth_url) {
+        tracing::warn!("[Claude OAuth] 无法打开浏览器: {}. 请手动打开 URL.", e);
+    }
+
+    // 等待回调
+    wait_future.await
+}

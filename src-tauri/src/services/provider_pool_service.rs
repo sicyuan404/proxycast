@@ -300,6 +300,8 @@ impl ProviderPoolService {
     }
 
     /// 执行单个凭证的健康检查
+    ///
+    /// 如果遇到 401 错误，会自动尝试刷新 token 后重试
     pub async fn check_credential_health(
         &self,
         db: &DbConnection,
@@ -335,6 +337,71 @@ impl ProviderPoolService {
                 })
             }
             Err(e) => {
+                // 如果是 401 错误，尝试刷新 token 后重试
+                if e.contains("401") || e.contains("Unauthorized") {
+                    tracing::info!("[健康检查] 检测到 401 错误，尝试刷新 token: {}", uuid);
+
+                    // 尝试刷新 token
+                    match self.refresh_credential_token(db, uuid).await {
+                        Ok(_) => {
+                            tracing::info!("[健康检查] Token 刷新成功，重新检查健康状态");
+
+                            // 重新获取凭证（token 已更新）
+                            let updated_cred = {
+                                let conn = db.lock().map_err(|e| e.to_string())?;
+                                ProviderPoolDao::get_by_uuid(&conn, uuid)
+                                    .map_err(|e| e.to_string())?
+                                    .ok_or_else(|| format!("Credential not found: {}", uuid))?
+                            };
+
+                            // 重新执行健康检查
+                            let retry_start = std::time::Instant::now();
+                            let retry_result = self
+                                .perform_health_check(&updated_cred.credential, &check_model)
+                                .await;
+                            let retry_duration_ms = retry_start.elapsed().as_millis() as u64;
+
+                            match retry_result {
+                                Ok(_) => {
+                                    self.mark_healthy(db, uuid, Some(&check_model))?;
+                                    return Ok(HealthCheckResult {
+                                        uuid: uuid.to_string(),
+                                        success: true,
+                                        model: Some(check_model),
+                                        message: Some(
+                                            "Health check passed after token refresh".to_string(),
+                                        ),
+                                        duration_ms: duration_ms + retry_duration_ms,
+                                    });
+                                }
+                                Err(retry_e) => {
+                                    tracing::warn!("[健康检查] Token 刷新后仍然失败: {}", retry_e);
+                                    self.mark_unhealthy(db, uuid, Some(&retry_e))?;
+                                    return Ok(HealthCheckResult {
+                                        uuid: uuid.to_string(),
+                                        success: false,
+                                        model: Some(check_model),
+                                        message: Some(retry_e),
+                                        duration_ms: duration_ms + retry_duration_ms,
+                                    });
+                                }
+                            }
+                        }
+                        Err(refresh_err) => {
+                            tracing::warn!("[健康检查] Token 刷新失败: {}", refresh_err);
+                            // Token 刷新失败，返回原始错误
+                            self.mark_unhealthy(db, uuid, Some(&e))?;
+                            return Ok(HealthCheckResult {
+                                uuid: uuid.to_string(),
+                                success: false,
+                                model: Some(check_model),
+                                message: Some(format!("{} (Token 刷新失败: {})", e, refresh_err)),
+                                duration_ms,
+                            });
+                        }
+                    }
+                }
+
                 self.mark_unhealthy(db, uuid, Some(&e))?;
                 Ok(HealthCheckResult {
                     uuid: uuid.to_string(),
@@ -550,11 +617,13 @@ impl ProviderPoolService {
     }
 
     // Gemini OAuth 健康检查
+    // 使用 cloudcode-pa.googleapis.com API（与 Gemini CLI 兼容）
+    // 使用 loadCodeAssist 接口进行健康检查，这是最简单可靠的方式
     async fn check_gemini_health(
         &self,
         creds_path: &str,
         _project_id: Option<&str>,
-        model: &str,
+        _model: &str,
     ) -> Result<(), String> {
         let creds_content =
             std::fs::read_to_string(creds_path).map_err(|e| format!("读取凭证文件失败: {}", e))?;
@@ -565,24 +634,25 @@ impl ProviderPoolService {
             .as_str()
             .ok_or_else(|| "凭证中缺少 access_token".to_string())?;
 
-        let url = format!(
-            "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent",
-            model
-        );
+        // 使用 loadCodeAssist 接口进行健康检查
+        // 这个接口用于获取项目信息，是最简单可靠的健康检查方式
+        let url = "https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist";
 
         let request_body = serde_json::json!({
-            "contents": [{
-                "parts": [{"text": "Say OK"}]
-            }],
-            "generationConfig": {
-                "maxOutputTokens": 10
+            "cloudaicompanionProject": "",
+            "metadata": {
+                "ideType": "IDE_UNSPECIFIED",
+                "platform": "PLATFORM_UNSPECIFIED",
+                "pluginType": "GEMINI",
+                "duetProject": ""
             }
         });
 
         let response = self
             .client
-            .post(&url)
+            .post(url)
             .bearer_auth(access_token)
+            .header("Content-Type", "application/json")
             .json(&request_body)
             .timeout(self.health_check_timeout)
             .send()
@@ -592,7 +662,9 @@ impl ProviderPoolService {
         if response.status().is_success() {
             Ok(())
         } else {
-            Err(format!("HTTP {}", response.status()))
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            Err(format!("HTTP {} - {}", status, body))
         }
     }
 
@@ -607,16 +679,31 @@ impl ProviderPoolService {
             .as_str()
             .ok_or_else(|| "凭证中缺少 access_token".to_string())?;
 
+        // 获取 base_url，优先使用 resource_url，否则使用默认值
+        let base_url = if let Some(resource_url) = creds["resource_url"].as_str() {
+            if resource_url.starts_with("http") {
+                format!("{}/v1", resource_url.trim_end_matches('/'))
+            } else {
+                format!("https://{}/v1", resource_url)
+            }
+        } else {
+            "https://portal.qwen.ai/v1".to_string()
+        };
+
         let request_body = serde_json::json!({
             "model": model,
             "messages": [{"role": "user", "content": "Say OK"}],
             "max_tokens": 10
         });
 
+        let url = format!("{}/chat/completions", base_url);
+
         let response = self
             .client
-            .post("https://chat.qwen.ai/api/v1/chat/completions")
+            .post(&url)
             .bearer_auth(access_token)
+            .header("Content-Type", "application/json")
+            .header("Accept", "application/json")
             .json(&request_body)
             .timeout(self.health_check_timeout)
             .send()

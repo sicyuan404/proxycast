@@ -1250,6 +1250,414 @@ pub async fn start_antigravity_oauth_login(
     Ok(credential)
 }
 
+/// Codex OAuth 授权 URL 响应
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct CodexAuthUrlResponse {
+    pub auth_url: String,
+}
+
+/// 获取 Codex OAuth 授权 URL 并等待回调（不自动打开浏览器）
+///
+/// 启动服务器后通过事件发送授权 URL，然后等待回调
+/// 成功后返回凭证
+#[tauri::command]
+pub async fn get_codex_auth_url_and_wait(
+    app: tauri::AppHandle,
+    db: State<'_, DbConnection>,
+    pool_service: State<'_, ProviderPoolServiceState>,
+    name: Option<String>,
+) -> Result<ProviderCredential, String> {
+    use crate::providers::codex;
+
+    tracing::info!("[Codex OAuth] 启动服务器并获取授权 URL");
+
+    // 启动服务器并获取授权 URL
+    let (auth_url, wait_future) = codex::start_codex_oauth_server_and_get_url()
+        .await
+        .map_err(|e| format!("启动 OAuth 服务器失败: {}", e))?;
+
+    tracing::info!("[Codex OAuth] 授权 URL: {}", auth_url);
+
+    // 通过事件发送授权 URL 给前端
+    let _ = app.emit(
+        "codex-auth-url",
+        CodexAuthUrlResponse {
+            auth_url: auth_url.clone(),
+        },
+    );
+
+    // 等待回调
+    let result = wait_future.await.map_err(|e| e.to_string())?;
+
+    tracing::info!(
+        "[Codex OAuth] 登录成功，凭证保存到: {}",
+        result.creds_file_path
+    );
+
+    // 添加到凭证池
+    let credential = pool_service.0.add_credential(
+        &db,
+        "codex",
+        CredentialData::CodexOAuth {
+            creds_file_path: result.creds_file_path,
+        },
+        name,
+        Some(true),
+        None,
+    )?;
+
+    tracing::info!("[Codex OAuth] 凭证已添加到凭证池: {}", credential.uuid);
+
+    Ok(credential)
+}
+
+/// 启动 Codex OAuth 登录流程
+///
+/// 打开浏览器让用户登录 OpenAI 账号，获取 Codex 凭证
+#[tauri::command]
+pub async fn start_codex_oauth_login(
+    db: State<'_, DbConnection>,
+    pool_service: State<'_, ProviderPoolServiceState>,
+    name: Option<String>,
+) -> Result<ProviderCredential, String> {
+    use crate::providers::codex;
+
+    tracing::info!("[Codex OAuth] 开始 OAuth 登录流程");
+
+    // 启动 OAuth 登录
+    let result = codex::start_codex_oauth_login()
+        .await
+        .map_err(|e| format!("Codex OAuth 登录失败: {}", e))?;
+
+    tracing::info!(
+        "[Codex OAuth] 登录成功，凭证保存到: {}",
+        result.creds_file_path
+    );
+
+    // 添加到凭证池
+    let credential = pool_service.0.add_credential(
+        &db,
+        "codex",
+        CredentialData::CodexOAuth {
+            creds_file_path: result.creds_file_path,
+        },
+        name,
+        Some(true),
+        None,
+    )?;
+
+    tracing::info!("[Codex OAuth] 凭证已添加到凭证池: {}", credential.uuid);
+
+    Ok(credential)
+}
+
+/// Claude OAuth 授权 URL 响应
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ClaudeOAuthAuthUrlResponse {
+    pub auth_url: String,
+}
+
+/// 获取 Claude OAuth 授权 URL 并等待回调（不自动打开浏览器）
+///
+/// 启动服务器后通过事件发送授权 URL，然后等待回调
+/// 成功后返回凭证
+#[tauri::command]
+pub async fn get_claude_oauth_auth_url_and_wait(
+    app: tauri::AppHandle,
+    db: State<'_, DbConnection>,
+    pool_service: State<'_, ProviderPoolServiceState>,
+    name: Option<String>,
+) -> Result<ProviderCredential, String> {
+    use crate::providers::claude_oauth;
+
+    tracing::info!("[Claude OAuth] 启动服务器并获取授权 URL");
+
+    // 启动服务器并获取授权 URL
+    let (auth_url, wait_future) = claude_oauth::start_claude_oauth_server_and_get_url()
+        .await
+        .map_err(|e| format!("启动 OAuth 服务器失败: {}", e))?;
+
+    tracing::info!("[Claude OAuth] 授权 URL: {}", auth_url);
+
+    // 通过事件发送授权 URL 给前端
+    let _ = app.emit(
+        "claude-oauth-auth-url",
+        ClaudeOAuthAuthUrlResponse {
+            auth_url: auth_url.clone(),
+        },
+    );
+
+    // 等待回调
+    let result = wait_future.await.map_err(|e| e.to_string())?;
+
+    tracing::info!(
+        "[Claude OAuth] 登录成功，凭证保存到: {}",
+        result.creds_file_path
+    );
+
+    // 添加到凭证池
+    let credential = pool_service.0.add_credential(
+        &db,
+        "claude_oauth",
+        CredentialData::ClaudeOAuth {
+            creds_file_path: result.creds_file_path,
+        },
+        name,
+        Some(true),
+        None,
+    )?;
+
+    tracing::info!("[Claude OAuth] 凭证已添加到凭证池: {}", credential.uuid);
+
+    Ok(credential)
+}
+
+/// 启动 Claude OAuth 登录流程
+///
+/// 打开浏览器让用户登录 Claude 账号，获取凭证
+#[tauri::command]
+pub async fn start_claude_oauth_login(
+    db: State<'_, DbConnection>,
+    pool_service: State<'_, ProviderPoolServiceState>,
+    name: Option<String>,
+) -> Result<ProviderCredential, String> {
+    use crate::providers::claude_oauth;
+
+    tracing::info!("[Claude OAuth] 开始 OAuth 登录流程");
+
+    // 启动 OAuth 登录
+    let result = claude_oauth::start_claude_oauth_login()
+        .await
+        .map_err(|e| format!("Claude OAuth 登录失败: {}", e))?;
+
+    tracing::info!(
+        "[Claude OAuth] 登录成功，凭证保存到: {}",
+        result.creds_file_path
+    );
+
+    // 添加到凭证池
+    let credential = pool_service.0.add_credential(
+        &db,
+        "claude_oauth",
+        CredentialData::ClaudeOAuth {
+            creds_file_path: result.creds_file_path,
+        },
+        name,
+        Some(true),
+        None,
+    )?;
+
+    tracing::info!("[Claude OAuth] 凭证已添加到凭证池: {}", credential.uuid);
+
+    Ok(credential)
+}
+
+/// Qwen Device Code 响应
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct QwenDeviceCodeResponse {
+    pub user_code: String,
+    pub verification_uri: String,
+    pub verification_uri_complete: Option<String>,
+    pub expires_in: i64,
+}
+
+/// 获取 Qwen Device Code 并等待用户授权
+///
+/// 启动 Device Code Flow 后通过事件发送设备码信息，然后轮询等待授权
+/// 成功后返回凭证
+#[tauri::command]
+pub async fn get_qwen_device_code_and_wait(
+    app: tauri::AppHandle,
+    db: State<'_, DbConnection>,
+    pool_service: State<'_, ProviderPoolServiceState>,
+    name: Option<String>,
+) -> Result<ProviderCredential, String> {
+    use crate::providers::qwen;
+
+    tracing::info!("[Qwen] 启动 Device Code Flow");
+
+    // 启动 Device Code Flow 并获取设备码信息
+    let (device_response, wait_future) = qwen::start_qwen_device_code_and_get_info()
+        .await
+        .map_err(|e| format!("启动 Device Code Flow 失败: {}", e))?;
+
+    tracing::info!(
+        "[Qwen] Device Code: user_code={}, verification_uri={}",
+        device_response.user_code,
+        device_response.verification_uri
+    );
+
+    // 通过事件发送设备码信息给前端
+    let _ = app.emit(
+        "qwen-device-code",
+        QwenDeviceCodeResponse {
+            user_code: device_response.user_code.clone(),
+            verification_uri: device_response.verification_uri.clone(),
+            verification_uri_complete: device_response.verification_uri_complete.clone(),
+            expires_in: device_response.expires_in,
+        },
+    );
+
+    // 等待用户授权
+    let result = wait_future.await.map_err(|e| e.to_string())?;
+
+    tracing::info!("[Qwen] 登录成功，凭证保存到: {}", result.creds_file_path);
+
+    // 添加到凭证池
+    let credential = pool_service.0.add_credential(
+        &db,
+        "qwen",
+        CredentialData::QwenOAuth {
+            creds_file_path: result.creds_file_path,
+        },
+        name,
+        Some(true),
+        None,
+    )?;
+
+    tracing::info!("[Qwen] 凭证已添加到凭证池: {}", credential.uuid);
+
+    Ok(credential)
+}
+
+/// 启动 Qwen Device Code Flow 登录流程
+///
+/// 自动打开浏览器让用户完成授权
+#[tauri::command]
+pub async fn start_qwen_device_code_login(
+    db: State<'_, DbConnection>,
+    pool_service: State<'_, ProviderPoolServiceState>,
+    name: Option<String>,
+) -> Result<ProviderCredential, String> {
+    use crate::providers::qwen;
+
+    tracing::info!("[Qwen] 开始 Device Code Flow 登录流程");
+
+    // 启动 Device Code Flow 登录
+    let result = qwen::start_qwen_device_code_login()
+        .await
+        .map_err(|e| format!("Qwen Device Code Flow 登录失败: {}", e))?;
+
+    tracing::info!("[Qwen] 登录成功，凭证保存到: {}", result.creds_file_path);
+
+    // 添加到凭证池
+    let credential = pool_service.0.add_credential(
+        &db,
+        "qwen",
+        CredentialData::QwenOAuth {
+            creds_file_path: result.creds_file_path,
+        },
+        name,
+        Some(true),
+        None,
+    )?;
+
+    tracing::info!("[Qwen] 凭证已添加到凭证池: {}", credential.uuid);
+
+    Ok(credential)
+}
+
+/// iFlow OAuth 授权 URL 响应
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct IFlowAuthUrlResponse {
+    pub auth_url: String,
+}
+
+/// 获取 iFlow OAuth 授权 URL 并等待回调（不自动打开浏览器）
+///
+/// 启动服务器后通过事件发送授权 URL，然后等待回调
+/// 成功后返回凭证
+#[tauri::command]
+pub async fn get_iflow_auth_url_and_wait(
+    app: tauri::AppHandle,
+    db: State<'_, DbConnection>,
+    pool_service: State<'_, ProviderPoolServiceState>,
+    name: Option<String>,
+) -> Result<ProviderCredential, String> {
+    use crate::providers::iflow;
+
+    tracing::info!("[iFlow OAuth] 启动服务器并获取授权 URL");
+
+    // 启动服务器并获取授权 URL
+    let (auth_url, wait_future) = iflow::start_iflow_oauth_server_and_get_url()
+        .await
+        .map_err(|e| format!("启动 OAuth 服务器失败: {}", e))?;
+
+    tracing::info!("[iFlow OAuth] 授权 URL: {}", auth_url);
+
+    // 通过事件发送授权 URL 给前端
+    let _ = app.emit(
+        "iflow-auth-url",
+        IFlowAuthUrlResponse {
+            auth_url: auth_url.clone(),
+        },
+    );
+
+    // 等待回调
+    let result = wait_future.await.map_err(|e| e.to_string())?;
+
+    tracing::info!(
+        "[iFlow OAuth] 登录成功，凭证保存到: {}",
+        result.creds_file_path
+    );
+
+    // 添加到凭证池
+    let credential = pool_service.0.add_credential(
+        &db,
+        "iflow",
+        CredentialData::IFlowOAuth {
+            creds_file_path: result.creds_file_path,
+        },
+        name,
+        Some(true),
+        None,
+    )?;
+
+    tracing::info!("[iFlow OAuth] 凭证已添加到凭证池: {}", credential.uuid);
+
+    Ok(credential)
+}
+
+/// 启动 iFlow OAuth 登录流程
+///
+/// 打开浏览器让用户登录 iFlow 账号，获取凭证
+#[tauri::command]
+pub async fn start_iflow_oauth_login(
+    db: State<'_, DbConnection>,
+    pool_service: State<'_, ProviderPoolServiceState>,
+    name: Option<String>,
+) -> Result<ProviderCredential, String> {
+    use crate::providers::iflow;
+
+    tracing::info!("[iFlow OAuth] 开始 OAuth 登录流程");
+
+    // 启动 OAuth 登录
+    let result = iflow::start_iflow_oauth_login()
+        .await
+        .map_err(|e| format!("iFlow OAuth 登录失败: {}", e))?;
+
+    tracing::info!(
+        "[iFlow OAuth] 登录成功，凭证保存到: {}",
+        result.creds_file_path
+    );
+
+    // 添加到凭证池
+    let credential = pool_service.0.add_credential(
+        &db,
+        "iflow",
+        CredentialData::IFlowOAuth {
+            creds_file_path: result.creds_file_path,
+        },
+        name,
+        Some(true),
+        None,
+    )?;
+
+    tracing::info!("[iFlow OAuth] 凭证已添加到凭证池: {}", credential.uuid);
+
+    Ok(credential)
+}
+
 /// 获取 Kiro 凭证的 Machine ID 指纹信息
 ///
 /// 返回凭证的唯一设备指纹，用于在 UI 中展示
@@ -1328,4 +1736,171 @@ pub async fn get_kiro_credential_fingerprint(
         source,
         auth_method,
     })
+}
+
+/// Gemini OAuth 授权 URL 响应
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct GeminiAuthUrlResponse {
+    pub auth_url: String,
+    pub session_id: String,
+}
+
+use once_cell::sync::Lazy;
+/// Gemini OAuth 会话存储（用于存储 code_verifier）
+use std::collections::HashMap;
+use tokio::sync::RwLock;
+
+static GEMINI_OAUTH_SESSIONS: Lazy<
+    RwLock<HashMap<String, crate::providers::gemini::GeminiOAuthSession>>,
+> = Lazy::new(|| RwLock::new(HashMap::new()));
+
+/// 获取 Gemini OAuth 授权 URL（不等待回调）
+///
+/// 生成授权 URL 和 session_id，通过事件发送给前端
+/// 用户需要手动复制授权码回来，然后调用 exchange_gemini_code
+#[tauri::command]
+pub async fn get_gemini_auth_url_and_wait(
+    app: tauri::AppHandle,
+    _db: State<'_, DbConnection>,
+    _pool_service: State<'_, ProviderPoolServiceState>,
+    _name: Option<String>,
+) -> Result<ProviderCredential, String> {
+    use crate::providers::gemini;
+
+    tracing::info!("[Gemini OAuth] 生成授权 URL");
+
+    // 生成授权 URL 和会话信息
+    let (auth_url, session) = gemini::generate_gemini_auth_url_with_session();
+    let session_id = session.session_id.clone();
+
+    tracing::info!("[Gemini OAuth] 授权 URL: {}", auth_url);
+    tracing::info!("[Gemini OAuth] Session ID: {}", session_id);
+
+    // 存储会话信息（用于后续交换 token）
+    {
+        let mut sessions = GEMINI_OAUTH_SESSIONS.write().await;
+        sessions.insert(session_id.clone(), session);
+
+        // 清理过期的会话（超过 10 分钟）
+        let now = chrono::Utc::now().timestamp();
+        sessions.retain(|_, s| now - s.created_at < 600);
+    }
+
+    // 通过事件发送授权 URL 给前端
+    let _ = app.emit(
+        "gemini-auth-url",
+        GeminiAuthUrlResponse {
+            auth_url: auth_url.clone(),
+            session_id: session_id.clone(),
+        },
+    );
+
+    // 返回错误，让前端知道需要用户手动输入授权码
+    // 这不是真正的错误，只是流程需要用户交互
+    Err(format!("AUTH_URL:{}", auth_url))
+}
+
+/// 用 Gemini 授权码交换 Token 并添加凭证
+#[tauri::command]
+pub async fn exchange_gemini_code(
+    db: State<'_, DbConnection>,
+    pool_service: State<'_, ProviderPoolServiceState>,
+    code: String,
+    session_id: Option<String>,
+    name: Option<String>,
+) -> Result<ProviderCredential, String> {
+    use crate::providers::gemini;
+
+    tracing::info!("[Gemini OAuth] 开始交换授权码");
+
+    // 获取 code_verifier
+    let code_verifier = if let Some(ref sid) = session_id {
+        let sessions = GEMINI_OAUTH_SESSIONS.read().await;
+        sessions
+            .get(sid)
+            .map(|s| s.code_verifier.clone())
+            .ok_or_else(|| "会话已过期，请重新获取授权 URL".to_string())?
+    } else {
+        // 如果没有 session_id，尝试使用最近的会话
+        let sessions = GEMINI_OAUTH_SESSIONS.read().await;
+        sessions
+            .values()
+            .max_by_key(|s| s.created_at)
+            .map(|s| s.code_verifier.clone())
+            .ok_or_else(|| "没有可用的会话，请先获取授权 URL".to_string())?
+    };
+
+    // 交换 token 并创建凭证
+    let result = gemini::exchange_gemini_code_and_create_credentials(&code, &code_verifier)
+        .await
+        .map_err(|e| format!("交换授权码失败: {}", e))?;
+
+    tracing::info!(
+        "[Gemini OAuth] 登录成功，凭证保存到: {}",
+        result.creds_file_path
+    );
+
+    // 清理使用过的会话
+    if let Some(ref sid) = session_id {
+        let mut sessions = GEMINI_OAUTH_SESSIONS.write().await;
+        sessions.remove(sid);
+    }
+
+    // 添加到凭证池
+    let credential = pool_service.0.add_credential(
+        &db,
+        "gemini",
+        CredentialData::GeminiOAuth {
+            creds_file_path: result.creds_file_path,
+            project_id: None, // 项目 ID 会在健康检查时自动获取
+        },
+        name,
+        Some(true),
+        None,
+    )?;
+
+    tracing::info!("[Gemini OAuth] 凭证已添加到凭证池: {}", credential.uuid);
+
+    Ok(credential)
+}
+
+/// 启动 Gemini OAuth 登录流程
+///
+/// 打开浏览器让用户登录 Google 账号，获取 Gemini 凭证
+#[tauri::command]
+pub async fn start_gemini_oauth_login(
+    db: State<'_, DbConnection>,
+    pool_service: State<'_, ProviderPoolServiceState>,
+    name: Option<String>,
+) -> Result<ProviderCredential, String> {
+    use crate::providers::gemini;
+
+    tracing::info!("[Gemini OAuth] 开始 OAuth 登录流程");
+
+    // 启动 OAuth 登录
+    let result = gemini::start_gemini_oauth_login()
+        .await
+        .map_err(|e| format!("Gemini OAuth 登录失败: {}", e))?;
+
+    tracing::info!(
+        "[Gemini OAuth] 登录成功，凭证保存到: {}",
+        result.creds_file_path
+    );
+
+    // 添加到凭证池
+    let credential = pool_service.0.add_credential(
+        &db,
+        "gemini",
+        CredentialData::GeminiOAuth {
+            creds_file_path: result.creds_file_path,
+            project_id: None,
+        },
+        name,
+        Some(true),
+        None,
+    )?;
+
+    tracing::info!("[Gemini OAuth] 凭证已添加到凭证池: {}", credential.uuid);
+
+    Ok(credential)
 }

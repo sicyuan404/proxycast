@@ -1575,3 +1575,431 @@ mod tests {
         assert!(provider.are_cookies_expired());
     }
 }
+
+// ============================================================================
+// OAuth 登录功能（与 CLIProxyAPI 对齐）
+// ============================================================================
+
+use std::sync::Arc;
+use tokio::sync::oneshot;
+use uuid::Uuid;
+
+/// iFlow OAuth 登录结果
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IFlowOAuthResult {
+    pub credentials: IFlowCredentials,
+    pub creds_file_path: String,
+}
+
+/// OAuth 成功页面 HTML
+const IFLOW_OAUTH_SUCCESS_HTML: &str = r#"<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>授权成功</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+        .container { text-align: center; background: white; padding: 40px 60px; border-radius: 16px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); }
+        h1 { color: #667eea; margin-bottom: 16px; }
+        p { color: #666; margin-bottom: 8px; }
+        .email { color: #333; font-weight: 500; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>✓ 授权成功</h1>
+        <p>iFlow 账号已添加到 ProxyCast</p>
+        <p class="email">EMAIL_PLACEHOLDER</p>
+        <p style="margin-top: 20px; color: #999;">可以关闭此页面</p>
+    </div>
+</body>
+</html>"#;
+
+/// OAuth 失败页面 HTML
+const IFLOW_OAUTH_ERROR_HTML: &str = r#"<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>授权失败</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); }
+        .container { text-align: center; background: white; padding: 40px 60px; border-radius: 16px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); }
+        h1 { color: #ef4444; margin-bottom: 16px; }
+        p { color: #666; }
+        .error { color: #ef4444; font-size: 14px; margin-top: 16px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>✗ 授权失败</h1>
+        <p>ERROR_PLACEHOLDER</p>
+        <p style="margin-top: 20px; color: #999;">请关闭此页面后重试</p>
+    </div>
+</body>
+</html>"#;
+
+/// 生成 iFlow OAuth 授权 URL
+pub fn generate_iflow_auth_url(port: u16, state: &str) -> String {
+    let redirect_uri = format!("http://localhost:{}/oauth2callback", port);
+
+    let params = [
+        ("loginMethod", "phone"),
+        ("type", "phone"),
+        ("redirect", redirect_uri.as_str()),
+        ("state", state),
+        ("client_id", IFLOW_CLIENT_ID),
+    ];
+
+    let query = params
+        .iter()
+        .map(|(k, v)| format!("{}={}", k, urlencoding::encode(v)))
+        .collect::<Vec<_>>()
+        .join("&");
+
+    format!("{}?{}", IFLOW_AUTH_URL, query)
+}
+
+/// 用授权码交换 Token
+pub async fn exchange_iflow_code_for_token(
+    client: &Client,
+    code: &str,
+    redirect_uri: &str,
+) -> Result<IFlowCredentials, Box<dyn Error + Send + Sync>> {
+    // 构建 Basic Auth 头
+    let basic_auth = BASE64_STANDARD.encode(format!("{}:{}", IFLOW_CLIENT_ID, IFLOW_CLIENT_SECRET));
+
+    let params = [
+        ("grant_type", "authorization_code"),
+        ("code", code),
+        ("redirect_uri", redirect_uri),
+        ("client_id", IFLOW_CLIENT_ID),
+        ("client_secret", IFLOW_CLIENT_SECRET),
+    ];
+
+    let resp = client
+        .post(IFLOW_TOKEN_URL)
+        .header("Content-Type", "application/x-www-form-urlencoded")
+        .header("Accept", "application/json")
+        .header("Authorization", format!("Basic {}", basic_auth))
+        .form(&params)
+        .send()
+        .await?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        return Err(format!("Token 交换失败: {} - {}", status, body).into());
+    }
+
+    let data: serde_json::Value = resp.json().await?;
+
+    let access_token = data["access_token"]
+        .as_str()
+        .ok_or("响应中没有 access_token")?
+        .to_string();
+    let refresh_token = data["refresh_token"].as_str().map(|s| s.to_string());
+    let token_type = data["token_type"].as_str().map(|s| s.to_string());
+    let scope = data["scope"].as_str().map(|s| s.to_string());
+    let expires_in = data["expires_in"].as_i64().unwrap_or(3600);
+
+    let expires_at = chrono::Utc::now() + chrono::Duration::seconds(expires_in);
+
+    // 获取用户信息和 API Key
+    let user_info_url = format!(
+        "{}?accessToken={}",
+        IFLOW_USER_INFO_URL,
+        urlencoding::encode(&access_token)
+    );
+
+    let user_resp = client
+        .get(&user_info_url)
+        .header("Accept", "application/json")
+        .send()
+        .await;
+
+    let (api_key, email) = if let Ok(resp) = user_resp {
+        if resp.status().is_success() {
+            if let Ok(user_data) = resp.json::<serde_json::Value>().await {
+                if user_data["success"].as_bool().unwrap_or(false) {
+                    let api_key = user_data["data"]["apiKey"].as_str().map(|s| s.to_string());
+                    let email = user_data["data"]["email"]
+                        .as_str()
+                        .or_else(|| user_data["data"]["phone"].as_str())
+                        .map(|s| s.to_string());
+                    (api_key, email)
+                } else {
+                    (None, None)
+                }
+            } else {
+                (None, None)
+            }
+        } else {
+            (None, None)
+        }
+    } else {
+        (None, None)
+    };
+
+    let credentials = IFlowCredentials {
+        auth_type: "oauth".to_string(),
+        access_token: Some(access_token),
+        refresh_token,
+        expire: Some(expires_at.to_rfc3339()),
+        expires_at: Some(expires_at.to_rfc3339()),
+        cookies: None,
+        cookie_expires_at: None,
+        email,
+        user_id: None,
+        last_refresh: Some(chrono::Utc::now().to_rfc3339()),
+        api_key,
+        token_type,
+        scope,
+        cred_type: "iflow".to_string(),
+    };
+
+    Ok(credentials)
+}
+
+/// 启动 OAuth 服务器并返回授权 URL（不打开浏览器）
+pub async fn start_iflow_oauth_server_and_get_url() -> Result<
+    (
+        String,
+        impl std::future::Future<Output = Result<IFlowOAuthResult, Box<dyn Error + Send + Sync>>>,
+    ),
+    Box<dyn Error + Send + Sync>,
+> {
+    use axum::{extract::Query, response::Html, routing::get, Router};
+    use std::collections::HashMap;
+    use tokio::net::TcpListener;
+
+    let client = Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()?;
+
+    // 生成随机 state
+    let state = Uuid::new_v4().to_string();
+    let state_clone = state.clone();
+
+    // 创建 channel 用于接收回调结果
+    let (tx, rx) = oneshot::channel::<Result<IFlowOAuthResult, String>>();
+    let tx = Arc::new(tokio::sync::Mutex::new(Some(tx)));
+
+    // 尝试绑定到端口，如果默认端口被占用则尝试其他端口
+    let ports_to_try = [DEFAULT_CALLBACK_PORT, 11452, 11453, 11454, 11455, 0]; // 0 表示让系统分配
+    let mut listener = None;
+    let mut last_error = None;
+
+    for port in ports_to_try {
+        match TcpListener::bind(format!("127.0.0.1:{}", port)).await {
+            Ok(l) => {
+                listener = Some(l);
+                break;
+            }
+            Err(e) => {
+                last_error = Some(e);
+                continue;
+            }
+        }
+    }
+
+    let listener = listener.ok_or_else(|| {
+        format!(
+            "启动 OAuth 服务器失败: {}",
+            last_error
+                .map(|e| e.to_string())
+                .unwrap_or_else(|| "无法绑定端口".to_string())
+        )
+    })?;
+    let port = listener.local_addr()?.port();
+
+    let redirect_uri = format!("http://localhost:{}/oauth2callback", port);
+    let redirect_uri_clone = redirect_uri.clone();
+
+    // 生成授权 URL
+    let auth_url = generate_iflow_auth_url(port, &state);
+
+    tracing::info!(
+        "[iFlow OAuth] 服务器启动在端口 {}, 授权 URL: {}",
+        port,
+        auth_url
+    );
+
+    // 构建路由
+    let app = Router::new().route(
+        "/oauth2callback",
+        get(move |Query(params): Query<HashMap<String, String>>| {
+            let tx = tx.clone();
+            let client = client.clone();
+            let state_expected = state_clone.clone();
+            let redirect_uri = redirect_uri_clone.clone();
+
+            async move {
+                let code = params.get("code");
+                let returned_state = params.get("state");
+                let error = params.get("error");
+
+                // 检查错误
+                if let Some(err) = error {
+                    let html = IFLOW_OAUTH_ERROR_HTML.replace("ERROR_PLACEHOLDER", err);
+                    if let Some(sender) = tx.lock().await.take() {
+                        let _ = sender.send(Err(format!("OAuth 错误: {}", err)));
+                    }
+                    return Html(html);
+                }
+
+                // 检查 state
+                if returned_state.map(|s| s.as_str()) != Some(&state_expected) {
+                    let html =
+                        IFLOW_OAUTH_ERROR_HTML.replace("ERROR_PLACEHOLDER", "State 验证失败");
+                    if let Some(sender) = tx.lock().await.take() {
+                        let _ = sender.send(Err("State 验证失败".to_string()));
+                    }
+                    return Html(html);
+                }
+
+                // 检查 code
+                let code = match code {
+                    Some(c) => c,
+                    None => {
+                        let html =
+                            IFLOW_OAUTH_ERROR_HTML.replace("ERROR_PLACEHOLDER", "未收到授权码");
+                        if let Some(sender) = tx.lock().await.take() {
+                            let _ = sender.send(Err("未收到授权码".to_string()));
+                        }
+                        return Html(html);
+                    }
+                };
+
+                // 交换 Token
+                let token_result =
+                    exchange_iflow_code_for_token(&client, code, &redirect_uri).await;
+                let credentials = match token_result {
+                    Ok(creds) => creds,
+                    Err(e) => {
+                        let html =
+                            IFLOW_OAUTH_ERROR_HTML.replace("ERROR_PLACEHOLDER", &e.to_string());
+                        if let Some(sender) = tx.lock().await.take() {
+                            let _ = sender.send(Err(e.to_string()));
+                        }
+                        return Html(html);
+                    }
+                };
+
+                let email = credentials.email.clone();
+
+                // 保存凭证到应用数据目录
+                let creds_dir = dirs::data_dir()
+                    .unwrap_or_else(|| std::path::PathBuf::from("."))
+                    .join("proxycast")
+                    .join("credentials")
+                    .join("iflow");
+
+                if let Err(e) = std::fs::create_dir_all(&creds_dir) {
+                    let html = IFLOW_OAUTH_ERROR_HTML
+                        .replace("ERROR_PLACEHOLDER", &format!("创建目录失败: {}", e));
+                    if let Some(sender) = tx.lock().await.take() {
+                        let _ = sender.send(Err(format!("创建目录失败: {}", e)));
+                    }
+                    return Html(html);
+                }
+
+                // 生成唯一文件名
+                let uuid = Uuid::new_v4().to_string();
+                let timestamp = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs();
+                let filename = format!("iflow_{}_{}.json", &uuid[..8], timestamp);
+                let creds_file_path = creds_dir.join(&filename);
+
+                // 保存凭证
+                let creds_json = match serde_json::to_string_pretty(&credentials) {
+                    Ok(json) => json,
+                    Err(e) => {
+                        let html = IFLOW_OAUTH_ERROR_HTML
+                            .replace("ERROR_PLACEHOLDER", &format!("序列化凭证失败: {}", e));
+                        if let Some(sender) = tx.lock().await.take() {
+                            let _ = sender.send(Err(format!("序列化凭证失败: {}", e)));
+                        }
+                        return Html(html);
+                    }
+                };
+
+                if let Err(e) = std::fs::write(&creds_file_path, &creds_json) {
+                    let html = IFLOW_OAUTH_ERROR_HTML
+                        .replace("ERROR_PLACEHOLDER", &format!("保存凭证失败: {}", e));
+                    if let Some(sender) = tx.lock().await.take() {
+                        let _ = sender.send(Err(format!("保存凭证失败: {}", e)));
+                    }
+                    return Html(html);
+                }
+
+                tracing::info!("[iFlow OAuth] 凭证已保存到: {:?}", creds_file_path);
+
+                // 发送成功结果
+                let result = IFlowOAuthResult {
+                    credentials,
+                    creds_file_path: creds_file_path.to_string_lossy().to_string(),
+                };
+
+                if let Some(sender) = tx.lock().await.take() {
+                    let _ = sender.send(Ok(result));
+                }
+
+                // 返回成功页面
+                let html = IFLOW_OAUTH_SUCCESS_HTML.replace(
+                    "EMAIL_PLACEHOLDER",
+                    &email.unwrap_or_else(|| "未知用户".to_string()),
+                );
+                Html(html)
+            }
+        }),
+    );
+
+    // 启动服务器
+    let server = axum::serve(listener, app);
+
+    // 创建等待 future
+    let wait_future = async move {
+        // 设置超时（5 分钟）
+        let timeout = tokio::time::timeout(std::time::Duration::from_secs(300), async {
+            // 启动服务器（在后台运行）
+            tokio::spawn(async move {
+                if let Err(e) = server.await {
+                    tracing::error!("[iFlow OAuth] 服务器错误: {}", e);
+                }
+            });
+
+            // 等待回调结果
+            match rx.await {
+                Ok(result) => result.map_err(|e| {
+                    Box::new(std::io::Error::new(std::io::ErrorKind::Other, e))
+                        as Box<dyn Error + Send + Sync>
+                }),
+                Err(_) => Err("OAuth 回调通道关闭".into()),
+            }
+        });
+
+        match timeout.await {
+            Ok(result) => result,
+            Err(_) => Err("OAuth 登录超时（5分钟）".into()),
+        }
+    };
+
+    Ok((auth_url, wait_future))
+}
+
+/// 启动 iFlow OAuth 登录流程（自动打开浏览器）
+pub async fn start_iflow_oauth_login() -> Result<IFlowOAuthResult, Box<dyn Error + Send + Sync>> {
+    let (auth_url, wait_future) = start_iflow_oauth_server_and_get_url().await?;
+
+    tracing::info!("[iFlow OAuth] 打开浏览器进行授权: {}", auth_url);
+
+    // 打开浏览器
+    if let Err(e) = open::that(&auth_url) {
+        tracing::warn!("[iFlow OAuth] 无法打开浏览器: {}. 请手动打开 URL.", e);
+    }
+
+    // 等待回调
+    wait_future.await
+}

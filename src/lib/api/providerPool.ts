@@ -383,6 +383,72 @@ export const providerPoolApi = {
     });
   },
 
+  // Codex OAuth 登录（打开浏览器授权）
+  async startCodexOAuthLogin(name?: string): Promise<ProviderCredential> {
+    return invoke("start_codex_oauth_login", { name });
+  },
+
+  // 获取 Codex OAuth 授权 URL 并等待回调（不自动打开浏览器）
+  // 服务器会在后台等待回调，成功后返回凭证
+  async getCodexAuthUrlAndWait(name?: string): Promise<ProviderCredential> {
+    return invoke("get_codex_auth_url_and_wait", { name });
+  },
+
+  // Claude OAuth 登录（打开浏览器授权）
+  async startClaudeOAuthLogin(name?: string): Promise<ProviderCredential> {
+    return invoke("start_claude_oauth_login", { name });
+  },
+
+  // 获取 Claude OAuth 授权 URL 并等待回调（不自动打开浏览器）
+  // 服务器会在后台等待回调，成功后返回凭证
+  async getClaudeOAuthAuthUrlAndWait(
+    name?: string,
+  ): Promise<ProviderCredential> {
+    return invoke("get_claude_oauth_auth_url_and_wait", { name });
+  },
+
+  // Qwen Device Code Flow 登录（打开浏览器授权）
+  async startQwenDeviceCodeLogin(name?: string): Promise<ProviderCredential> {
+    return invoke("start_qwen_device_code_login", { name });
+  },
+
+  // 获取 Qwen Device Code 并等待用户授权（不自动打开浏览器）
+  // 服务器会在后台轮询等待授权，成功后返回凭证
+  async getQwenDeviceCodeAndWait(name?: string): Promise<ProviderCredential> {
+    return invoke("get_qwen_device_code_and_wait", { name });
+  },
+
+  // iFlow OAuth 登录（打开浏览器授权）
+  async startIFlowOAuthLogin(name?: string): Promise<ProviderCredential> {
+    return invoke("start_iflow_oauth_login", { name });
+  },
+
+  // 获取 iFlow OAuth 授权 URL 并等待回调（不自动打开浏览器）
+  // 服务器会在后台等待回调，成功后返回凭证
+  async getIFlowAuthUrlAndWait(name?: string): Promise<ProviderCredential> {
+    return invoke("get_iflow_auth_url_and_wait", { name });
+  },
+
+  // Gemini OAuth 登录（打开浏览器授权）
+  async startGeminiOAuthLogin(name?: string): Promise<ProviderCredential> {
+    return invoke("start_gemini_oauth_login", { name });
+  },
+
+  // 获取 Gemini OAuth 授权 URL 并等待回调（不自动打开浏览器）
+  // 服务器会在后台等待回调，成功后返回凭证
+  async getGeminiAuthUrlAndWait(name?: string): Promise<ProviderCredential> {
+    return invoke("get_gemini_auth_url_and_wait", { name });
+  },
+
+  // 用 Gemini 授权码交换 token
+  async exchangeGeminiCode(
+    code: string,
+    sessionId?: string,
+    name?: string,
+  ): Promise<ProviderCredential> {
+    return invoke("exchange_gemini_code", { code, sessionId, name });
+  },
+
   // OAuth token management
   async refreshCredentialToken(uuid: string): Promise<string> {
     return invoke("refresh_pool_credential_token", { uuid });

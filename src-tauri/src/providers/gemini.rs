@@ -747,3 +747,609 @@ mod gemini_api_key_tests {
         let _ = provider;
     }
 }
+
+// ============================================================================
+// Gemini OAuth 登录功能
+// ============================================================================
+
+use std::sync::Arc;
+use tokio::sync::oneshot;
+use uuid::Uuid;
+
+// Gemini CLI OAuth 配置 - 与 claude-relay-service 对齐
+pub const GEMINI_OAUTH_CLIENT_ID: &str =
+    "681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com";
+pub const GEMINI_OAUTH_CLIENT_SECRET: &str = "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";
+pub const GEMINI_OAUTH_SCOPES: &[&str] = &["https://www.googleapis.com/auth/cloud-platform"];
+pub const GEMINI_OAUTH_REDIRECT_URI: &str = "https://codeassist.google.com/authcode";
+
+/// OAuth 登录成功后的凭证信息
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GeminiOAuthResult {
+    pub credentials: GeminiCredentials,
+    pub creds_file_path: String,
+}
+
+/// 生成 PKCE code_verifier 和 code_challenge
+fn generate_pkce() -> (String, String) {
+    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+    use sha2::{Digest, Sha256};
+
+    // 生成 43-128 字符的随机字符串作为 code_verifier
+    let code_verifier: String = (0..64)
+        .map(|_| {
+            let idx = rand::random::<u8>() % 66;
+            let chars = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~";
+            chars[idx as usize] as char
+        })
+        .collect();
+
+    // 计算 code_challenge = BASE64URL(SHA256(code_verifier))
+    let mut hasher = Sha256::new();
+    hasher.update(code_verifier.as_bytes());
+    let hash = hasher.finalize();
+    let code_challenge = URL_SAFE_NO_PAD.encode(hash);
+
+    (code_verifier, code_challenge)
+}
+
+/// 生成 OAuth 授权 URL（使用 PKCE）
+pub fn generate_gemini_auth_url(state: &str, code_challenge: &str) -> String {
+    let scopes = GEMINI_OAUTH_SCOPES.join(" ");
+
+    let params = [
+        ("access_type", "offline"),
+        ("client_id", GEMINI_OAUTH_CLIENT_ID),
+        ("code_challenge", code_challenge),
+        ("code_challenge_method", "S256"),
+        ("prompt", "select_account"),
+        ("redirect_uri", GEMINI_OAUTH_REDIRECT_URI),
+        ("response_type", "code"),
+        ("scope", &scopes),
+        ("state", state),
+    ];
+
+    let query = params
+        .iter()
+        .map(|(k, v)| format!("{}={}", k, urlencoding::encode(v)))
+        .collect::<Vec<_>>()
+        .join("&");
+
+    format!("https://accounts.google.com/o/oauth2/v2/auth?{}", query)
+}
+
+/// Gemini OAuth 会话信息（用于存储 PKCE code_verifier）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GeminiOAuthSession {
+    pub session_id: String,
+    pub code_verifier: String,
+    pub state: String,
+    pub created_at: i64,
+}
+
+/// 生成 Gemini OAuth 授权 URL 和会话信息
+///
+/// 返回 (auth_url, session) 元组
+/// - auth_url: 用户需要在浏览器中打开的授权 URL
+/// - session: 包含 code_verifier 的会话信息，用于后续交换 token
+pub fn generate_gemini_auth_url_with_session() -> (String, GeminiOAuthSession) {
+    let (code_verifier, code_challenge) = generate_pkce();
+    let state = Uuid::new_v4().to_string();
+    let session_id = Uuid::new_v4().to_string();
+
+    let auth_url = generate_gemini_auth_url(&state, &code_challenge);
+
+    let session = GeminiOAuthSession {
+        session_id,
+        code_verifier,
+        state,
+        created_at: chrono::Utc::now().timestamp(),
+    };
+
+    (auth_url, session)
+}
+
+/// 用授权码交换 Token 并创建凭证
+///
+/// 完整流程：
+/// 1. 用 code + code_verifier 交换 tokens
+/// 2. 获取用户邮箱
+/// 3. 获取项目 ID
+/// 4. 保存凭证到文件
+pub async fn exchange_gemini_code_and_create_credentials(
+    code: &str,
+    code_verifier: &str,
+) -> Result<GeminiOAuthResult, Box<dyn std::error::Error + Send + Sync>> {
+    let client = Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()?;
+
+    tracing::info!("[Gemini OAuth] 正在用授权码交换 Token...");
+
+    // 交换 Token
+    let token_data = exchange_gemini_code_for_token(&client, code, code_verifier).await?;
+
+    let access_token = token_data["access_token"]
+        .as_str()
+        .ok_or("响应中没有 access_token")?
+        .to_string();
+    let refresh_token = token_data["refresh_token"].as_str().map(|s| s.to_string());
+    let expires_in = token_data["expires_in"].as_i64();
+
+    tracing::info!("[Gemini OAuth] Token 交换成功");
+
+    // 获取用户邮箱
+    let email = fetch_gemini_user_email(&client, &access_token)
+        .await
+        .ok()
+        .flatten();
+
+    tracing::info!("[Gemini OAuth] 用户邮箱: {:?}", email);
+
+    // 获取项目 ID
+    let _project_id = fetch_gemini_project_id(&client, &access_token)
+        .await
+        .ok()
+        .flatten();
+
+    // 构建凭证
+    let now = chrono::Utc::now();
+    let expires_at = expires_in.map(|secs| now + chrono::Duration::seconds(secs));
+
+    let credentials = GeminiCredentials {
+        access_token: Some(access_token),
+        refresh_token,
+        token_type: Some("Bearer".to_string()),
+        expiry_date: expires_at.map(|t| t.timestamp_millis()),
+        expire: expires_at.map(|t| t.to_rfc3339()),
+        scope: Some(GEMINI_OAUTH_SCOPES.join(" ")),
+        email,
+        last_refresh: Some(now.to_rfc3339()),
+        cred_type: "gemini".to_string(),
+        token: None,
+    };
+
+    // 保存凭证到文件
+    let file_path = save_gemini_credentials_to_file(&credentials).await?;
+
+    tracing::info!("[Gemini OAuth] 凭证已保存到: {}", file_path);
+
+    Ok(GeminiOAuthResult {
+        credentials,
+        creds_file_path: file_path,
+    })
+}
+
+/// 用授权码交换 Token（使用 PKCE）
+pub async fn exchange_gemini_code_for_token(
+    client: &Client,
+    code: &str,
+    code_verifier: &str,
+) -> Result<serde_json::Value, Box<dyn std::error::Error + Send + Sync>> {
+    let params = [
+        ("code", code),
+        ("client_id", GEMINI_OAUTH_CLIENT_ID),
+        ("client_secret", GEMINI_OAUTH_CLIENT_SECRET),
+        ("code_verifier", code_verifier),
+        ("redirect_uri", GEMINI_OAUTH_REDIRECT_URI),
+        ("grant_type", "authorization_code"),
+    ];
+
+    let resp = client.post(GEMINI_TOKEN_URL).form(&params).send().await?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        return Err(format!("Token 交换失败: {} - {}", status, body).into());
+    }
+
+    let data: serde_json::Value = resp.json().await?;
+    Ok(data)
+}
+
+/// 获取用户邮箱
+pub async fn fetch_gemini_user_email(
+    client: &Client,
+    access_token: &str,
+) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
+    let resp = client
+        .get("https://www.googleapis.com/oauth2/v2/userinfo")
+        .header("Authorization", format!("Bearer {}", access_token))
+        .send()
+        .await?;
+
+    if resp.status().is_success() {
+        let data: serde_json::Value = resp.json().await?;
+        Ok(data["email"].as_str().map(|s| s.to_string()))
+    } else {
+        Ok(None)
+    }
+}
+
+/// 获取项目 ID（通过 loadCodeAssist 接口）
+pub async fn fetch_gemini_project_id(
+    client: &Client,
+    access_token: &str,
+) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
+    tracing::info!("[Gemini OAuth] 正在获取 projectId...");
+
+    let resp = client
+        .post(format!(
+            "{}/{CODE_ASSIST_API_VERSION}:loadCodeAssist",
+            CODE_ASSIST_ENDPOINT
+        ))
+        .header("Authorization", format!("Bearer {}", access_token))
+        .header("Content-Type", "application/json")
+        .json(&serde_json::json!({
+            "cloudaicompanionProject": "",
+            "metadata": {
+                "ideType": "IDE_UNSPECIFIED",
+                "platform": "PLATFORM_UNSPECIFIED",
+                "pluginType": "GEMINI",
+                "duetProject": ""
+            }
+        }))
+        .send()
+        .await?;
+
+    let status = resp.status();
+    tracing::info!("[Gemini OAuth] loadCodeAssist 响应状态: {}", status);
+
+    if status.is_success() {
+        let data: serde_json::Value = resp.json().await?;
+        if let Some(project) = data["cloudaicompanionProject"].as_str() {
+            if !project.is_empty() {
+                tracing::info!("[Gemini OAuth] 获取到 projectId: {}", project);
+                return Ok(Some(project.to_string()));
+            }
+        }
+        tracing::info!("[Gemini OAuth] cloudaicompanionProject 为空");
+        Ok(None)
+    } else {
+        let body = resp.text().await.unwrap_or_default();
+        tracing::warn!(
+            "[Gemini OAuth] loadCodeAssist 请求失败: {} - {}",
+            status,
+            body
+        );
+        Ok(None)
+    }
+}
+
+/// OAuth 成功页面 HTML
+const GEMINI_OAUTH_SUCCESS_HTML: &str = r#"<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>授权成功</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: linear-gradient(135deg, #4285f4 0%, #34a853 100%); }
+        .container { text-align: center; background: white; padding: 40px 60px; border-radius: 16px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); }
+        h1 { color: #22c55e; margin-bottom: 16px; }
+        p { color: #666; margin-bottom: 8px; }
+        .email { color: #333; font-weight: 500; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>✓ 授权成功</h1>
+        <p>Gemini 账号已添加到 ProxyCast</p>
+        <p class="email">EMAIL_PLACEHOLDER</p>
+        <p style="margin-top: 20px; color: #999;">可以关闭此页面</p>
+    </div>
+</body>
+</html>"#;
+
+/// OAuth 失败页面 HTML
+const GEMINI_OAUTH_ERROR_HTML: &str = r#"<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>授权失败</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: linear-gradient(135deg, #4285f4 0%, #34a853 100%); }
+        .container { text-align: center; background: white; padding: 40px 60px; border-radius: 16px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); }
+        h1 { color: #ef4444; margin-bottom: 16px; }
+        p { color: #666; }
+        .error { color: #ef4444; font-size: 14px; margin-top: 16px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>✗ 授权失败</h1>
+        <p>ERROR_PLACEHOLDER</p>
+        <p style="margin-top: 20px; color: #999;">请关闭此页面后重试</p>
+    </div>
+</body>
+</html>"#;
+
+/// 保存 Gemini 凭证到文件
+async fn save_gemini_credentials_to_file(
+    credentials: &GeminiCredentials,
+) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    // 生成唯一文件名
+    let uuid = Uuid::new_v4().to_string();
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+
+    let filename = format!("gemini_{}_{}_gemini.json", &uuid[..8], timestamp);
+
+    // 获取凭证存储目录
+    let credentials_dir = dirs::data_dir()
+        .ok_or_else(|| "无法获取应用数据目录")?
+        .join("proxycast")
+        .join("credentials");
+
+    // 确保目录存在
+    tokio::fs::create_dir_all(&credentials_dir).await?;
+
+    let file_path = credentials_dir.join(&filename);
+
+    // 写入凭证
+    let content = serde_json::to_string_pretty(credentials)?;
+    tokio::fs::write(&file_path, content).await?;
+
+    Ok(file_path.to_string_lossy().to_string())
+}
+
+/// 启动 OAuth 服务器并返回授权 URL（不打开浏览器）
+/// 服务器会在后台等待回调，成功后返回凭证
+pub async fn start_gemini_oauth_server_and_get_url() -> Result<
+    (
+        String,
+        impl std::future::Future<
+            Output = Result<GeminiOAuthResult, Box<dyn std::error::Error + Send + Sync>>,
+        >,
+    ),
+    Box<dyn std::error::Error + Send + Sync>,
+> {
+    use axum::{extract::Query, response::Html, routing::get, Router};
+    use std::collections::HashMap;
+    use tokio::net::TcpListener;
+
+    let client = Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()?;
+
+    // 生成 PKCE
+    let (code_verifier, code_challenge) = generate_pkce();
+
+    // 生成随机 state
+    let state = Uuid::new_v4().to_string();
+    let state_clone = state.clone();
+    let code_verifier_clone = code_verifier.clone();
+
+    // 创建 channel 用于接收回调结果
+    let (tx, rx) = oneshot::channel::<Result<GeminiOAuthResult, String>>();
+    let tx = Arc::new(tokio::sync::Mutex::new(Some(tx)));
+
+    // 尝试绑定到多个端口
+    let ports_to_try = [11451, 11452, 11453, 11454, 11455, 0];
+    let mut listener = None;
+    let mut bound_port = 0;
+
+    for port in ports_to_try {
+        match TcpListener::bind(format!("127.0.0.1:{}", port)).await {
+            Ok(l) => {
+                bound_port = l.local_addr()?.port();
+                listener = Some(l);
+                tracing::info!("[Gemini OAuth] 成功绑定到端口 {}", bound_port);
+                break;
+            }
+            Err(e) => {
+                tracing::warn!("[Gemini OAuth] 端口 {} 绑定失败: {}", port, e);
+                continue;
+            }
+        }
+    }
+
+    let listener = listener.ok_or("无法绑定到任何可用端口")?;
+
+    // 生成授权 URL
+    let auth_url = generate_gemini_auth_url(&state, &code_challenge);
+
+    tracing::info!(
+        "[Gemini OAuth] 服务器启动在端口 {}, 授权 URL: {}",
+        bound_port,
+        auth_url
+    );
+
+    // 构建路由
+    let app = Router::new().route(
+        "/oauth-callback",
+        get(move |Query(params): Query<HashMap<String, String>>| {
+            let tx = tx.clone();
+            let client = client.clone();
+            let state_expected = state_clone.clone();
+            let code_verifier = code_verifier_clone.clone();
+
+            async move {
+                let code = params.get("code");
+                let returned_state = params.get("state");
+                let error = params.get("error");
+
+                // 检查错误
+                if let Some(err) = error {
+                    let error_desc = params
+                        .get("error_description")
+                        .map(|s| s.as_str())
+                        .unwrap_or("未知错误");
+                    let error_msg = format!("{}: {}", err, error_desc);
+                    tracing::error!("[Gemini OAuth] 授权失败: {}", error_msg);
+
+                    if let Some(tx) = tx.lock().await.take() {
+                        let _ = tx.send(Err(error_msg.clone()));
+                    }
+
+                    let html = GEMINI_OAUTH_ERROR_HTML.replace("ERROR_PLACEHOLDER", &error_msg);
+                    return Html(html);
+                }
+
+                // 验证 state
+                if returned_state.map(|s| s.as_str()) != Some(&state_expected) {
+                    let error_msg = "State 验证失败";
+                    tracing::error!("[Gemini OAuth] {}", error_msg);
+
+                    if let Some(tx) = tx.lock().await.take() {
+                        let _ = tx.send(Err(error_msg.to_string()));
+                    }
+
+                    let html = GEMINI_OAUTH_ERROR_HTML.replace("ERROR_PLACEHOLDER", error_msg);
+                    return Html(html);
+                }
+
+                // 获取授权码
+                let code = match code {
+                    Some(c) => c,
+                    None => {
+                        let error_msg = "未收到授权码";
+                        tracing::error!("[Gemini OAuth] {}", error_msg);
+
+                        if let Some(tx) = tx.lock().await.take() {
+                            let _ = tx.send(Err(error_msg.to_string()));
+                        }
+
+                        let html = GEMINI_OAUTH_ERROR_HTML.replace("ERROR_PLACEHOLDER", error_msg);
+                        return Html(html);
+                    }
+                };
+
+                tracing::info!("[Gemini OAuth] 收到授权码，正在交换 Token...");
+
+                // 交换 Token
+                let token_result =
+                    exchange_gemini_code_for_token(&client, code, &code_verifier).await;
+
+                match token_result {
+                    Ok(token_data) => {
+                        let access_token = token_data["access_token"]
+                            .as_str()
+                            .unwrap_or("")
+                            .to_string();
+                        let refresh_token =
+                            token_data["refresh_token"].as_str().map(|s| s.to_string());
+                        let expires_in = token_data["expires_in"].as_i64();
+
+                        // 获取用户邮箱
+                        let email = fetch_gemini_user_email(&client, &access_token)
+                            .await
+                            .ok()
+                            .flatten();
+
+                        // 获取项目 ID
+                        let project_id = fetch_gemini_project_id(&client, &access_token)
+                            .await
+                            .ok()
+                            .flatten();
+
+                        // 构建凭证
+                        let now = chrono::Utc::now();
+                        let expires_at =
+                            expires_in.map(|secs| now + chrono::Duration::seconds(secs));
+
+                        let credentials = GeminiCredentials {
+                            access_token: Some(access_token),
+                            refresh_token,
+                            token_type: Some("Bearer".to_string()),
+                            expiry_date: expires_at.map(|t| t.timestamp_millis()),
+                            expire: expires_at.map(|t| t.to_rfc3339()),
+                            scope: Some(GEMINI_OAUTH_SCOPES.join(" ")),
+                            email: email.clone(),
+                            last_refresh: Some(now.to_rfc3339()),
+                            cred_type: "gemini".to_string(),
+                            token: None,
+                        };
+
+                        // 保存凭证到文件
+                        match save_gemini_credentials_to_file(&credentials).await {
+                            Ok(file_path) => {
+                                tracing::info!("[Gemini OAuth] 凭证已保存到: {}", file_path);
+
+                                let result = GeminiOAuthResult {
+                                    credentials: credentials.clone(),
+                                    creds_file_path: file_path,
+                                };
+
+                                if let Some(tx) = tx.lock().await.take() {
+                                    let _ = tx.send(Ok(result));
+                                }
+
+                                let email_display = email.unwrap_or_else(|| "未知邮箱".to_string());
+                                let project_display = project_id
+                                    .map(|p| format!("<p>Project ID: {}</p>", p))
+                                    .unwrap_or_default();
+                                let html = GEMINI_OAUTH_SUCCESS_HTML
+                                    .replace("EMAIL_PLACEHOLDER", &email_display)
+                                    .replace(
+                                        "</div>\n</body>",
+                                        &format!("{}</div>\n</body>", project_display),
+                                    );
+                                Html(html)
+                            }
+                            Err(e) => {
+                                let error_msg = format!("保存凭证失败: {}", e);
+                                tracing::error!("[Gemini OAuth] {}", error_msg);
+
+                                if let Some(tx) = tx.lock().await.take() {
+                                    let _ = tx.send(Err(error_msg.clone()));
+                                }
+
+                                let html = GEMINI_OAUTH_ERROR_HTML
+                                    .replace("ERROR_PLACEHOLDER", &error_msg);
+                                Html(html)
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        let error_msg = format!("Token 交换失败: {}", e);
+                        tracing::error!("[Gemini OAuth] {}", error_msg);
+
+                        if let Some(tx) = tx.lock().await.take() {
+                            let _ = tx.send(Err(error_msg.clone()));
+                        }
+
+                        let html = GEMINI_OAUTH_ERROR_HTML.replace("ERROR_PLACEHOLDER", &error_msg);
+                        Html(html)
+                    }
+                }
+            }
+        }),
+    );
+
+    // 启动服务器
+    let server_future = async move {
+        axum::serve(listener, app)
+            .await
+            .map_err(|e| format!("服务器错误: {}", e))
+    };
+
+    // 启动服务器任务
+    tokio::spawn(server_future);
+
+    // 返回授权 URL 和等待结果的 Future
+    let wait_future = async move {
+        match rx.await {
+            Ok(result) => result.map_err(|e| e.into()),
+            Err(_) => Err("OAuth 回调通道关闭".into()),
+        }
+    };
+
+    Ok((auth_url, wait_future))
+}
+
+/// 启动 Gemini OAuth 登录流程（自动打开浏览器）
+pub async fn start_gemini_oauth_login(
+) -> Result<GeminiOAuthResult, Box<dyn std::error::Error + Send + Sync>> {
+    let (auth_url, wait_future) = start_gemini_oauth_server_and_get_url().await?;
+
+    // 打开浏览器
+    tracing::info!("[Gemini OAuth] 正在打开浏览器...");
+    if let Err(e) = open::that(&auth_url) {
+        tracing::warn!("[Gemini OAuth] 无法自动打开浏览器: {}", e);
+    }
+
+    // 等待回调
+    wait_future.await
+}
