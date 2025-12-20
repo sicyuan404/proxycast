@@ -15,6 +15,17 @@ pub struct ConfigStatus {
     pub has_env: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VersionCheckResult {
+    pub current: String,
+    pub latest: Option<String>,
+    #[serde(rename = "hasUpdate")]
+    pub has_update: bool,
+    #[serde(rename = "downloadUrl")]
+    pub download_url: Option<String>,
+    pub error: Option<String>,
+}
+
 /// Get the config directory path for an app type
 fn get_config_dir(app_type: &AppType) -> Option<PathBuf> {
     let home = dirs::home_dir()?;
@@ -199,6 +210,7 @@ pub async fn set_auto_launch(app: AppHandle, enabled: bool) -> Result<bool, Stri
     Ok(enabled)
 }
 
+<<<<<<< HEAD
 // ============ Config Import/Export Commands ============
 
 /// 配置导出选项
@@ -574,22 +586,6 @@ pub async fn open_auth_dir(path: String) -> Result<bool, String> {
     Ok(true)
 }
 
-// ============ Version Check Commands ============
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct VersionCheckResult {
-    pub current: String,
-    pub latest: Option<String>,
-    #[serde(rename = "hasUpdate")]
-    pub has_update: bool,
-    #[serde(rename = "downloadUrl")]
-    pub download_url: Option<String>,
-    pub error: Option<String>,
-}
-
-/// 检查应用更新
-///
-/// 从 GitHub Releases API 获取最新版本信息并与当前版本比较
 #[tauri::command]
 pub async fn check_for_updates() -> Result<VersionCheckResult, String> {
     const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
