@@ -742,6 +742,7 @@ pub fn add_codex_oauth_credential(
     db: State<'_, DbConnection>,
     pool_service: State<'_, ProviderPoolServiceState>,
     creds_file_path: String,
+    api_base_url: Option<String>,
     name: Option<String>,
 ) -> Result<ProviderCredential, String> {
     // 复制并重命名文件到应用存储目录
@@ -752,6 +753,7 @@ pub fn add_codex_oauth_credential(
         "codex",
         CredentialData::CodexOAuth {
             creds_file_path: stored_file_path,
+            api_base_url,
         },
         name,
         Some(true),
@@ -1236,6 +1238,7 @@ pub async fn get_codex_auth_url_and_wait(
         "codex",
         CredentialData::CodexOAuth {
             creds_file_path: result.creds_file_path,
+            api_base_url: None,
         },
         name,
         Some(true),
@@ -1276,6 +1279,7 @@ pub async fn start_codex_oauth_login(
         "codex",
         CredentialData::CodexOAuth {
             creds_file_path: result.creds_file_path,
+            api_base_url: None,
         },
         name,
         Some(true),

@@ -383,6 +383,7 @@ pub async fn management_add_credential(
             if let Some(token_file) = request.token_file {
                 CredentialData::CodexOAuth {
                     creds_file_path: token_file,
+                    api_base_url: request.base_url.clone(),
                 }
             } else {
                 return (

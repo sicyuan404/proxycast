@@ -455,13 +455,27 @@ impl CodexProvider {
             .filter(|s| !s.is_empty())
     }
 
-    fn build_responses_url(base_url: &str) -> String {
+    pub(crate) fn build_responses_url(base_url: &str) -> String {
         let base = base_url.trim_end_matches('/');
+
+        // 规则说明：
+        // - 如果 base_url 以 /v1 结尾：直接拼 /responses
+        // - 如果 base_url 只有域名（path 为空或 /）：拼 /v1/responses（OpenAI 标准）
+        // - 如果 base_url 已包含路径前缀（如 https://yunyi.cfd/codex）：认为前缀已包含路由信息，拼 /responses
         if base.ends_with("/v1") {
-            format!("{}/responses", base)
-        } else {
-            format!("{}/v1/responses", base)
+            return format!("{}/responses", base);
         }
+
+        if let Ok(parsed) = url::Url::parse(base) {
+            let path = parsed.path().trim_end_matches('/');
+            if path.is_empty() || path == "/" {
+                return format!("{}/v1/responses", base);
+            }
+            return format!("{}/responses", base);
+        }
+
+        // 兜底：保持旧行为
+        format!("{}/v1/responses", base)
     }
 
     /// Load credentials from the default path
@@ -1092,7 +1106,18 @@ impl CodexProvider {
             .header("Openai-Beta", "responses=experimental")
             .json(&codex_request);
 
-        if matches!(mode, AuthMode::OAuth) {
+        // 部分三方 Codex 代理（如 Yunyi）会依赖 Codex CLI 的特征 headers；
+        // 仅在 OAuth 模式或显式配置了自定义 base_url 时附加，避免影响 OpenAI 官方 Key 模式。
+        let should_add_codex_cli_headers = matches!(mode, AuthMode::OAuth)
+            || (matches!(mode, AuthMode::ApiKey)
+                && self
+                    .credentials
+                    .api_base_url
+                    .as_deref()
+                    .map(|s| !s.trim().is_empty())
+                    .unwrap_or(false));
+
+        if should_add_codex_cli_headers {
             req = req
                 .header("Version", "0.21.0")
                 .header(
@@ -1101,6 +1126,7 @@ impl CodexProvider {
                 )
                 .header("Originator", "codex_cli_rs")
                 .header("Session_id", uuid::Uuid::new_v4().to_string())
+                .header("Conversation_id", uuid::Uuid::new_v4().to_string())
                 // Add account ID header if available
                 .header(
                     "Chatgpt-Account-Id",
@@ -1458,6 +1484,10 @@ mod tests {
         assert_eq!(
             CodexProvider::build_responses_url("https://example.com/v1/"),
             "https://example.com/v1/responses"
+        );
+        assert_eq!(
+            CodexProvider::build_responses_url("https://yunyi.cfd/codex"),
+            "https://yunyi.cfd/codex/responses"
         );
     }
 

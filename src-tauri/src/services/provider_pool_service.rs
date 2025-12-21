@@ -487,8 +487,12 @@ impl ProviderPoolService {
                 self.check_gemini_api_key_health(api_key, base_url.as_deref(), model)
                     .await
             }
-            CredentialData::CodexOAuth { creds_file_path } => {
-                self.check_codex_health(creds_file_path, model).await
+            CredentialData::CodexOAuth {
+                creds_file_path,
+                api_base_url,
+            } => {
+                self.check_codex_health(creds_file_path, api_base_url.as_deref(), model)
+                    .await
             }
             CredentialData::ClaudeOAuth { creds_file_path } => {
                 self.check_claude_oauth_health(creds_file_path, model).await
@@ -925,7 +929,12 @@ impl ProviderPoolService {
 
     // Codex 健康检查
     // 支持 Yunyi 等代理使用 responses API 格式
-    async fn check_codex_health(&self, creds_path: &str, model: &str) -> Result<(), String> {
+    async fn check_codex_health(
+        &self,
+        creds_path: &str,
+        override_base_url: Option<&str>,
+        model: &str,
+    ) -> Result<(), String> {
         use crate::providers::codex::CodexProvider;
 
         let mut provider = CodexProvider::new();
@@ -941,29 +950,34 @@ impl ProviderPoolService {
             )
         })?;
 
-        // 获取 base_url，如果设置了则使用 responses API，否则使用 OpenAI chat/completions
-        let base_url = provider
-            .credentials
-            .api_base_url
-            .as_deref()
+        // 优先使用 override_base_url（来自 CredentialData），其次使用凭证文件中的配置
+        let base_url = override_base_url
             .map(|s| s.trim())
-            .filter(|s| !s.is_empty());
+            .filter(|s| !s.is_empty())
+            .or_else(|| {
+                provider
+                    .credentials
+                    .api_base_url
+                    .as_deref()
+                    .map(|s| s.trim())
+                    .filter(|s| !s.is_empty())
+            });
 
         match base_url {
             Some(base) => {
-                // 使用自定义 base_url (如 Yunyi)，使用 responses API 格式
-                let base = base.trim_end_matches('/');
-                let url = if base.ends_with("/v1") {
-                    format!("{}/responses", base)
-                } else {
-                    format!("{}/v1/responses", base)
-                };
+                // 使用自定义 base_url (如 Yunyi)，与 CodexProvider 的 URL/headers 行为保持一致
+                let url = CodexProvider::build_responses_url(base);
 
-                // Codex/Yunyi 使用 responses API 格式
+                // Codex/Yunyi 使用 responses API 格式；云驿等代理要求 stream 必须为 true
                 let request_body = serde_json::json!({
                     "model": model,
-                    "input": "Say OK",
-                    "max_output_tokens": 10
+                    "input": [{
+                        "type": "message",
+                        "role": "user",
+                        "content": [{"type": "input_text", "text": "Say OK"}]
+                    }],
+                    "max_output_tokens": 10,
+                    "stream": true
                 });
 
                 tracing::debug!(
@@ -979,6 +993,13 @@ impl ProviderPoolService {
                     .header("Content-Type", "application/json")
                     .header("Accept", "text/event-stream")
                     .header("Openai-Beta", "responses=experimental")
+                    .header("Originator", "codex_cli_rs")
+                    .header("Session_id", uuid::Uuid::new_v4().to_string())
+                    .header("Conversation_id", uuid::Uuid::new_v4().to_string())
+                    .header(
+                        "User-Agent",
+                        "codex_cli_rs/0.77.0 (ProxyCast health check; Mac OS; arm64)",
+                    )
                     .json(&request_body)
                     .timeout(self.health_check_timeout)
                     .send()

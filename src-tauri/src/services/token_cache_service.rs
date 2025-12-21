@@ -282,9 +282,9 @@ impl TokenCacheService {
                     last_refresh_error: None,
                 })
             }
-            CredentialData::CodexOAuth { creds_file_path } => {
-                self.refresh_codex(creds_file_path).await
-            }
+            CredentialData::CodexOAuth {
+                creds_file_path, ..
+            } => self.refresh_codex(creds_file_path).await,
             CredentialData::ClaudeOAuth { creds_file_path } => {
                 self.refresh_claude_oauth(creds_file_path).await
             }
@@ -764,7 +764,9 @@ impl TokenCacheService {
                 refresh_error_count: 0,
                 last_refresh_error: None,
             }),
-            CredentialData::CodexOAuth { creds_file_path } => {
+            CredentialData::CodexOAuth {
+                creds_file_path, ..
+            } => {
                 let content = tokio::fs::read_to_string(creds_file_path)
                     .await
                     .map_err(|e| format!("读取 Codex 凭证文件失败: {}", e))?;

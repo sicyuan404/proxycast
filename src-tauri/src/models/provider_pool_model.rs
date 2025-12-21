@@ -72,7 +72,12 @@ pub enum CredentialData {
         excluded_models: Vec<String>,
     },
     /// Codex OAuth 凭证（OpenAI Codex）
-    CodexOAuth { creds_file_path: String },
+    CodexOAuth {
+        creds_file_path: String,
+        /// API Base URL（可选，默认使用凭证文件中的配置）
+        #[serde(default)]
+        api_base_url: Option<String>,
+    },
     /// Claude OAuth 凭证（Anthropic OAuth）
     ClaudeOAuth { creds_file_path: String },
     /// iFlow OAuth 凭证
@@ -113,7 +118,9 @@ impl CredentialData {
             CredentialData::GeminiApiKey { api_key, .. } => {
                 format!("Gemini API Key: {}", mask_key(api_key))
             }
-            CredentialData::CodexOAuth { creds_file_path } => {
+            CredentialData::CodexOAuth {
+                creds_file_path, ..
+            } => {
                 format!("Codex OAuth: {}", mask_path(creds_file_path))
             }
             CredentialData::ClaudeOAuth { creds_file_path } => {
@@ -550,7 +557,9 @@ pub fn get_oauth_creds_path(cred: &CredentialData) -> Option<String> {
         CredentialData::AntigravityOAuth {
             creds_file_path, ..
         } => Some(creds_file_path.clone()),
-        CredentialData::CodexOAuth { creds_file_path } => Some(creds_file_path.clone()),
+        CredentialData::CodexOAuth {
+            creds_file_path, ..
+        } => Some(creds_file_path.clone()),
         CredentialData::ClaudeOAuth { creds_file_path } => Some(creds_file_path.clone()),
         CredentialData::IFlowOAuth { creds_file_path } => Some(creds_file_path.clone()),
         CredentialData::IFlowCookie { creds_file_path } => Some(creds_file_path.clone()),
