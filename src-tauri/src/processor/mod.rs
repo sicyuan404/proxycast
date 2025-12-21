@@ -58,6 +58,8 @@ pub struct RequestProcessor {
     pub tokens: Arc<ParkingLotRwLock<TokenTracker>>,
     /// 凭证池服务
     pub pool_service: Arc<ProviderPoolService>,
+    /// 热重载协调锁（避免配置更新期间请求读取不一致的配置）
+    pub reload_lock: Arc<RwLock<()>>,
 }
 
 impl RequestProcessor {
@@ -85,6 +87,7 @@ impl RequestProcessor {
             stats,
             tokens,
             pool_service,
+            reload_lock: Arc::new(RwLock::new(())),
         }
     }
 
@@ -102,6 +105,7 @@ impl RequestProcessor {
             stats: Arc::new(ParkingLotRwLock::new(StatsAggregator::with_defaults())),
             tokens: Arc::new(ParkingLotRwLock::new(TokenTracker::with_defaults())),
             pool_service,
+            reload_lock: Arc::new(RwLock::new(())),
         }
     }
 
@@ -126,6 +130,7 @@ impl RequestProcessor {
             stats,
             tokens,
             pool_service,
+            reload_lock: Arc::new(RwLock::new(())),
         }
     }
 

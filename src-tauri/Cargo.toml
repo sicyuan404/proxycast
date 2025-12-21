@@ -38,7 +38,10 @@ async-stream = "0.3"
 regex = "1"
 md5 = "0.7"
 urlencoding = "2"
-rusqlite = { version = "0.31", features = ["bundled"] }
+subtle = "2.5"
+flate2 = "1"
+fs2 = "0.4"
+rusqlite = { version = "0.31", features = ["bundled", "backup"] }
 serde_yaml = "0.9"
 indexmap = { version = "2", features = ["serde"] }
 zip = "0.6"

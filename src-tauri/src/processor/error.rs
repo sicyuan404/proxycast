@@ -126,6 +126,18 @@ impl ProcessError {
             ProcessError::Cancelled => "cancelled",
         }
     }
+
+    /// 记录带上下文的错误日志
+    pub fn log_with_context(&self, request_id: &str, provider: &str, model: &str) {
+        tracing::error!(
+            request_id = %request_id,
+            provider = %provider,
+            model = %model,
+            error_type = %self.error_type(),
+            error_message = %self.to_string(),
+            "Request processing failed"
+        );
+    }
 }
 
 #[cfg(test)]

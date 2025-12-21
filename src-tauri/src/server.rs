@@ -23,6 +23,7 @@ use crate::providers::kiro::KiroProvider;
 use crate::providers::openai_custom::OpenAICustomProvider;
 use crate::providers::qwen::QwenProvider;
 use crate::providers::vertex::VertexProvider;
+use crate::services::backup_service::BackupService;
 use crate::services::provider_pool_service::ProviderPoolService;
 use crate::services::token_cache_service::TokenCacheService;
 use crate::telemetry::{RequestLog, RequestStatus};
@@ -35,10 +36,14 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
+use chrono::Utc;
+use fs2::available_space;
 use futures::stream;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
+use subtle::ConstantTimeEq;
 use tokio::sync::{mpsc, oneshot, RwLock};
 
 /// 安全截断字符串到指定字符数，避免 UTF-8 边界问题
@@ -67,6 +72,13 @@ fn message_content_len(content: &crate::models::openai::MessageContent) -> usize
             })
             .sum(),
     }
+}
+
+fn api_key_matches(provided_key: &str, expected_key: &str) -> bool {
+    provided_key
+        .as_bytes()
+        .ct_eq(expected_key.as_bytes())
+        .into()
 }
 
 /// 记录请求统计到遥测系统
@@ -290,6 +302,8 @@ impl ServerState {
             return Err("当前版本未启用 TLS，禁止开启远程管理".into());
         }
 
+        tracing::warn!("当前未启用 TLS，生产环境请使用反向代理终止 HTTPS");
+
         // 重新加载凭证
         let _ = self.kiro_provider.load_credentials().await;
         let kiro = self.kiro_provider.clone();
@@ -404,6 +418,8 @@ struct AppState {
     request_logger: Option<Arc<crate::telemetry::RequestLogger>>,
     /// Amp CLI 路由器
     amp_router: Arc<crate::router::AmpRouter>,
+    /// 备份服务
+    backup_service: Option<Arc<BackupService>>,
 }
 
 /// 启动配置文件监控
@@ -553,6 +569,7 @@ async fn start_config_watcher(
 /// - 更新过程不会阻塞新请求的处理
 /// - 现有连接不受影响
 async fn update_processor_config(processor: &RequestProcessor, config: &Config) {
+    let _reload_guard = processor.reload_lock.write().await;
     // 更新注入器规则
     {
         let mut injector = processor.injector.write().await;
@@ -734,6 +751,37 @@ async fn run_server(
             .unwrap_or_default(),
     ));
 
+    let backup_service = match BackupService::with_defaults() {
+        Ok(service) => {
+            tracing::info!(
+                "[BACKUP] 备份服务初始化成功，备份目录: {:?}",
+                service.backup_dir()
+            );
+            Some(Arc::new(service))
+        }
+        Err(e) => {
+            tracing::warn!("[BACKUP] 备份服务初始化失败，自动备份将不可用: {}", e);
+            None
+        }
+    };
+    if let Some(service) = backup_service.clone() {
+        let db_for_backup = db.clone();
+        tokio::spawn(async move {
+            let mut ticker = tokio::time::interval(std::time::Duration::from_secs(24 * 60 * 60));
+            loop {
+                ticker.tick().await;
+                let result = match &db_for_backup {
+                    Some(db) => service.backup_database_with_connection(db),
+                    None => service.backup_database(),
+                };
+                match result {
+                    Ok(path) => tracing::info!("[BACKUP] 自动备份成功: {:?}", path),
+                    Err(err) => tracing::warn!("[BACKUP] 自动备份失败: {}", err),
+                }
+            }
+        });
+    }
+
     let state = AppState {
         api_key: api_key.to_string(),
         base_url,
@@ -757,6 +805,7 @@ async fn run_server(
         hot_reload_manager: hot_reload_manager.clone(),
         request_logger: shared_logger,
         amp_router,
+        backup_service,
     };
 
     // 启动配置文件监控
@@ -785,6 +834,8 @@ async fn run_server(
 
     let management_routes = Router::new()
         .route("/v0/management/status", get(management_status))
+        .route("/v0/management/backup", post(management_backup))
+        .route("/v0/management/restore", post(management_restore))
         .route(
             "/v0/management/credentials",
             get(management_list_credentials),
@@ -804,6 +855,7 @@ async fn run_server(
 
     let app = Router::new()
         .route("/health", get(health))
+        .route("/ready", get(readiness))
         .route("/v1/models", get(models))
         .route("/v1/routes", get(list_routes))
         .route("/v1/chat/completions", post(chat_completions))
@@ -858,43 +910,213 @@ async fn run_server(
     Ok(())
 }
 
+#[derive(Debug, Serialize)]
+struct CheckResult {
+    status: String,
+    message: Option<String>,
+    latency_ms: Option<u64>,
+}
+
+#[derive(Debug, Serialize)]
+struct HealthStatus {
+    status: String,
+    timestamp: chrono::DateTime<Utc>,
+    version: String,
+    checks: HashMap<String, CheckResult>,
+}
+
 async fn health(State(state): State<AppState>) -> impl IntoResponse {
-    let (db_ready, pool_stats) = match &state.db {
-        Some(db) => {
-            let db_ok = db
-                .lock()
-                .map(|conn| conn.query_row::<i32, _, _>("SELECT 1", [], |row| row.get(0)))
-                .is_ok();
-            let stats = if db_ok {
-                state.pool_service.get_overview(db).ok().map(|items| {
-                    let mut total = 0usize;
-                    let mut healthy = 0usize;
-                    let mut disabled = 0usize;
-                    for item in items {
-                        total += item.stats.total_count;
-                        healthy += item.stats.healthy_count;
-                        disabled += item.stats.disabled_count;
-                    }
-                    serde_json::json!({
-                        "total": total,
-                        "healthy": healthy,
-                        "disabled": disabled
-                    })
-                })
-            } else {
-                None
-            };
-            (db_ok, stats)
-        }
-        None => (false, None),
+    let mut checks = HashMap::new();
+
+    let db_check = check_database(&state).await;
+    checks.insert("database".to_string(), db_check);
+
+    let pool_check = check_credential_pool(&state).await;
+    checks.insert("credential_pool".to_string(), pool_check);
+
+    let disk_check = check_disk_space(&state).await;
+    checks.insert("disk_space".to_string(), disk_check);
+
+    let log_check = check_log_directory(&state).await;
+    checks.insert("log_directory".to_string(), log_check);
+
+    let overall_status = if checks.values().all(|c| c.status == "healthy") {
+        "healthy"
+    } else if checks.values().any(|c| c.status == "unhealthy") {
+        "unhealthy"
+    } else {
+        "degraded"
     };
 
-    Json(serde_json::json!({
-        "status": "healthy",
-        "version": env!("CARGO_PKG_VERSION"),
-        "db_ready": db_ready,
-        "pool": pool_stats
-    }))
+    let status_code = match overall_status {
+        "healthy" | "degraded" => StatusCode::OK,
+        "unhealthy" => StatusCode::SERVICE_UNAVAILABLE,
+        _ => StatusCode::INTERNAL_SERVER_ERROR,
+    };
+
+    (
+        status_code,
+        Json(HealthStatus {
+            status: overall_status.to_string(),
+            timestamp: Utc::now(),
+            version: env!("CARGO_PKG_VERSION").to_string(),
+            checks,
+        }),
+    )
+}
+
+async fn readiness(State(state): State<AppState>) -> impl IntoResponse {
+    let db_ok = matches!(check_database(&state).await.status.as_str(), "healthy");
+    let pool_ok = matches!(
+        check_credential_pool(&state).await.status.as_str(),
+        "healthy"
+    );
+
+    if !db_ok || !pool_ok {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({
+                "ready": false,
+                "reason": "Database or credential pool not ready"
+            })),
+        );
+    }
+
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "ready": true
+        })),
+    )
+}
+
+async fn check_database(state: &AppState) -> CheckResult {
+    let start = std::time::Instant::now();
+    let Some(db) = &state.db else {
+        return CheckResult {
+            status: "unhealthy".to_string(),
+            message: Some("database not initialized".to_string()),
+            latency_ms: None,
+        };
+    };
+    let ok = db
+        .lock()
+        .map(|conn| conn.query_row::<i32, _, _>("SELECT 1", [], |row| row.get(0)))
+        .is_ok();
+
+    CheckResult {
+        status: if ok { "healthy" } else { "unhealthy" }.to_string(),
+        message: if ok {
+            None
+        } else {
+            Some("database query failed".to_string())
+        },
+        latency_ms: Some(start.elapsed().as_millis() as u64),
+    }
+}
+
+async fn check_credential_pool(state: &AppState) -> CheckResult {
+    let start = std::time::Instant::now();
+    let Some(db) = &state.db else {
+        return CheckResult {
+            status: "unhealthy".to_string(),
+            message: Some("database not initialized".to_string()),
+            latency_ms: None,
+        };
+    };
+
+    let stats = match state.pool_service.get_overview(db) {
+        Ok(items) => {
+            let mut total = 0usize;
+            let mut healthy = 0usize;
+            let mut disabled = 0usize;
+            for item in items {
+                total += item.stats.total_count;
+                healthy += item.stats.healthy_count;
+                disabled += item.stats.disabled_count;
+            }
+            (total, healthy, disabled)
+        }
+        Err(_) => (0, 0, 0),
+    };
+
+    let (total, healthy, disabled) = stats;
+    let status = if healthy > 0 {
+        "healthy"
+    } else if total > 0 {
+        "degraded"
+    } else {
+        "unhealthy"
+    };
+
+    CheckResult {
+        status: status.to_string(),
+        message: Some(format!(
+            "total={} healthy={} disabled={}",
+            total, healthy, disabled
+        )),
+        latency_ms: Some(start.elapsed().as_millis() as u64),
+    }
+}
+
+async fn check_disk_space(state: &AppState) -> CheckResult {
+    let start = std::time::Instant::now();
+    let Some(log_path) = state.logs.read().await.get_log_file_path() else {
+        return CheckResult {
+            status: "degraded".to_string(),
+            message: Some("log path not available".to_string()),
+            latency_ms: None,
+        };
+    };
+    let log_path = PathBuf::from(log_path);
+    let dir = log_path.parent().unwrap_or(log_path.as_path());
+
+    let available = available_space(dir).unwrap_or(0);
+    let available_gb = available / (1024 * 1024 * 1024);
+    let status = if available_gb >= 10 {
+        "healthy"
+    } else if available_gb >= 1 {
+        "degraded"
+    } else {
+        "unhealthy"
+    };
+
+    CheckResult {
+        status: status.to_string(),
+        message: Some(format!("available_gb={}", available_gb)),
+        latency_ms: Some(start.elapsed().as_millis() as u64),
+    }
+}
+
+async fn check_log_directory(state: &AppState) -> CheckResult {
+    let start = std::time::Instant::now();
+    let Some(log_path) = state.logs.read().await.get_log_file_path() else {
+        return CheckResult {
+            status: "degraded".to_string(),
+            message: Some("log path not available".to_string()),
+            latency_ms: None,
+        };
+    };
+    let log_path = PathBuf::from(log_path);
+    let dir = log_path.parent().unwrap_or(log_path.as_path());
+
+    let test_file = dir.join(".proxycast_write_check");
+    let writable = std::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .open(&test_file)
+        .and_then(|_| std::fs::remove_file(&test_file))
+        .is_ok();
+
+    CheckResult {
+        status: if writable { "healthy" } else { "unhealthy" }.to_string(),
+        message: if writable {
+            None
+        } else {
+            Some("log directory not writable".to_string())
+        },
+        latency_ms: Some(start.elapsed().as_millis() as u64),
+    }
 }
 
 async fn models() -> impl IntoResponse {
@@ -939,7 +1161,7 @@ async fn verify_api_key(
         }
     };
 
-    if key != expected_key {
+    if !api_key_matches(key, expected_key) {
         return Err((
             StatusCode::UNAUTHORIZED,
             Json(serde_json::json!({"error": {"message": "Invalid API key"}})),
@@ -977,7 +1199,7 @@ async fn verify_api_key_anthropic(
         }
     };
 
-    if key != expected_key {
+    if !api_key_matches(key, expected_key) {
         return Err((
             StatusCode::UNAUTHORIZED,
             Json(serde_json::json!({
@@ -998,6 +1220,7 @@ async fn chat_completions(
     headers: HeaderMap,
     Json(mut request): Json<ChatCompletionRequest>,
 ) -> Response {
+    let _reload_guard = state.processor.reload_lock.read().await;
     if let Err(e) = verify_api_key(&headers, &state.api_key).await {
         state
             .logs
@@ -1409,6 +1632,7 @@ async fn anthropic_messages(
     headers: HeaderMap,
     Json(mut request): Json<AnthropicMessagesRequest>,
 ) -> Response {
+    let _reload_guard = state.processor.reload_lock.read().await;
     // 使用 Anthropic 格式的认证验证（优先检查 x-api-key）
     if let Err(e) = verify_api_key_anthropic(&headers, &state.api_key).await {
         state
@@ -2077,6 +2301,7 @@ async fn count_tokens(
     headers: HeaderMap,
     Json(_request): Json<serde_json::Value>,
 ) -> Response {
+    let _reload_guard = state.processor.reload_lock.read().await;
     if let Err(e) = verify_api_key(&headers, &state.api_key).await {
         return e.into_response();
     }
@@ -2393,6 +2618,7 @@ async fn anthropic_messages_with_selector(
     headers: HeaderMap,
     Json(request): Json<AnthropicMessagesRequest>,
 ) -> Response {
+    let _reload_guard = state.processor.reload_lock.read().await;
     // 使用 Anthropic 格式的认证验证
     if let Err(e) = verify_api_key_anthropic(&headers, &state.api_key).await {
         state.logs.write().await.add(
@@ -2472,6 +2698,7 @@ async fn chat_completions_with_selector(
     headers: HeaderMap,
     Json(request): Json<ChatCompletionRequest>,
 ) -> Response {
+    let _reload_guard = state.processor.reload_lock.read().await;
     if let Err(e) = verify_api_key(&headers, &state.api_key).await {
         state.logs.write().await.add(
             "warn",
@@ -2547,6 +2774,7 @@ async fn amp_chat_completions(
     headers: HeaderMap,
     Json(mut request): Json<ChatCompletionRequest>,
 ) -> Response {
+    let _reload_guard = state.processor.reload_lock.read().await;
     if let Err(e) = verify_api_key(&headers, &state.api_key).await {
         state.logs.write().await.add(
             "warn",
@@ -2641,6 +2869,7 @@ async fn amp_messages(
     headers: HeaderMap,
     Json(mut request): Json<AnthropicMessagesRequest>,
 ) -> Response {
+    let _reload_guard = state.processor.reload_lock.read().await;
     // 使用 Anthropic 格式的认证验证
     if let Err(e) = verify_api_key_anthropic(&headers, &state.api_key).await {
         state.logs.write().await.add(
@@ -4036,7 +4265,7 @@ async fn ws_upgrade_handler(
         }
     };
 
-    if key != state.api_key {
+    if !api_key_matches(key, &state.api_key) {
         return axum::http::Response::builder()
             .status(401)
             .body(Body::from("Invalid API key"))
@@ -4249,6 +4478,7 @@ async fn handle_ws_chat_completions(
     request_id: &str,
     mut request: ChatCompletionRequest,
 ) -> WsProtoMessage {
+    let _reload_guard = state.processor.reload_lock.read().await;
     // 创建请求上下文
     let mut ctx = RequestContext::new(request.model.clone()).with_stream(request.stream);
 
@@ -4382,6 +4612,7 @@ async fn handle_ws_anthropic_messages(
     request_id: &str,
     mut request: AnthropicMessagesRequest,
 ) -> WsProtoMessage {
+    let _reload_guard = state.processor.reload_lock.read().await;
     // 创建请求上下文
     let mut ctx = RequestContext::new(request.model.clone()).with_stream(request.stream);
 
@@ -4957,6 +5188,18 @@ pub struct UpdateConfigResponse {
     pub message: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BackupResponse {
+    pub success: bool,
+    pub message: String,
+    pub backup_path: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct RestoreRequest {
+    pub backup_path: String,
+}
+
 fn snapshot_config(state: &AppState) -> Option<Config> {
     if let Some(manager) = &state.config_manager {
         if let Ok(guard) = manager.read() {
@@ -4987,6 +5230,86 @@ pub async fn management_status(State(state): State<AppState>) -> impl IntoRespon
     };
 
     Json(response)
+}
+
+/// POST /v0/management/backup - 触发数据库备份
+pub async fn management_backup(State(state): State<AppState>) -> impl IntoResponse {
+    let Some(service) = &state.backup_service else {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(BackupResponse {
+                success: false,
+                message: "Backup service not available".to_string(),
+                backup_path: None,
+            }),
+        );
+    };
+
+    let result = match &state.db {
+        Some(db) => service.backup_database_with_connection(db),
+        None => service.backup_database(),
+    };
+
+    match result {
+        Ok(path) => (
+            StatusCode::OK,
+            Json(BackupResponse {
+                success: true,
+                message: "Backup created".to_string(),
+                backup_path: Some(path.to_string_lossy().to_string()),
+            }),
+        ),
+        Err(err) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(BackupResponse {
+                success: false,
+                message: err,
+                backup_path: None,
+            }),
+        ),
+    }
+}
+
+/// POST /v0/management/restore - 从备份恢复数据库
+pub async fn management_restore(
+    State(state): State<AppState>,
+    Json(request): Json<RestoreRequest>,
+) -> impl IntoResponse {
+    let Some(service) = &state.backup_service else {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(BackupResponse {
+                success: false,
+                message: "Backup service not available".to_string(),
+                backup_path: None,
+            }),
+        );
+    };
+
+    let backup_path = PathBuf::from(request.backup_path);
+    let result = match &state.db {
+        Some(db) => service.restore_database_with_connection(db, &backup_path),
+        None => service.restore_database(&backup_path),
+    };
+
+    match result {
+        Ok(()) => (
+            StatusCode::OK,
+            Json(BackupResponse {
+                success: true,
+                message: "Restore completed".to_string(),
+                backup_path: None,
+            }),
+        ),
+        Err(err) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(BackupResponse {
+                success: false,
+                message: err,
+                backup_path: None,
+            }),
+        ),
+    }
 }
 
 /// GET /v0/management/credentials - 获取凭证列表

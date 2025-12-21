@@ -5,6 +5,7 @@
 use super::traits::{PipelineStep, StepError};
 use crate::processor::RequestContext;
 use async_trait::async_trait;
+use subtle::ConstantTimeEq;
 
 /// 认证步骤
 ///
@@ -34,7 +35,7 @@ impl AuthStep {
     /// 验证 API Key
     pub fn verify(&self, provided_key: Option<&str>) -> Result<(), StepError> {
         match provided_key {
-            Some(key) if key == self.expected_key => Ok(()),
+            Some(key) if key.as_bytes().ct_eq(self.expected_key.as_bytes()).into() => Ok(()),
             Some(_) => Err(StepError::Auth("Invalid API key".to_string())),
             None => Err(StepError::Auth("No API key provided".to_string())),
         }

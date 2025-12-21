@@ -134,15 +134,16 @@ fn test_management_auth_rate_limit_after_failures() {
     let mut service = layer.layer(MockService);
     let rt = tokio::runtime::Runtime::new().unwrap();
 
-    let client_ip = "203.0.113.10";
+    // 使用唯一的 IP 地址避免测试间干扰
+    let client_ip = format!("203.0.113.{}", std::process::id() % 256);
     for _ in 0..5 {
         let req =
-            create_request_with_management_key_and_forwarded(Some("invalid"), Some(client_ip));
+            create_request_with_management_key_and_forwarded(Some("invalid"), Some(&client_ip));
         let response = rt.block_on(async { service.call(req).await.unwrap() });
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     }
 
-    let req = create_request_with_management_key_and_forwarded(Some("invalid"), Some(client_ip));
+    let req = create_request_with_management_key_and_forwarded(Some("invalid"), Some(&client_ip));
     let response = rt.block_on(async { service.call(req).await.unwrap() });
     assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
 }

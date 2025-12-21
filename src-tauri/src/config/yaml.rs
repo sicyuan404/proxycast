@@ -104,6 +104,10 @@ impl ConfigManager {
             std::fs::create_dir_all(parent).map_err(|e| ConfigError::WriteError(e.to_string()))?;
         }
 
+        if path.exists() {
+            let backup_path = path.with_extension("yaml.backup");
+            let _ = std::fs::copy(path, backup_path);
+        }
         let yaml = Self::to_yaml(&self.config)?;
         std::fs::write(path, yaml).map_err(|e| ConfigError::WriteError(e.to_string()))
     }
@@ -656,26 +660,57 @@ fn json_config_path() -> std::path::PathBuf {
 /// 加载配置（向后兼容）
 ///
 /// 优先加载 YAML 配置，如果不存在则尝试加载 JSON 配置
+/// 首次启动时自动生成强随机 API Key 并保存配置
 pub fn load_config() -> Result<Config, Box<dyn std::error::Error>> {
+    use super::types::{generate_secure_api_key, is_default_api_key};
+
     let yaml_path = ConfigManager::default_config_path();
     let json_path = json_config_path();
 
     // 优先尝试 YAML 配置
     if yaml_path.exists() {
         let content = std::fs::read_to_string(&yaml_path)?;
-        let config = serde_yaml::from_str(&content)?;
+        let mut config: Config = serde_yaml::from_str(&content)?;
+        // 如果配置中使用默认 API Key，生成强随机 Key 并保存
+        if is_default_api_key(&config.server.api_key) {
+            let new_key = generate_secure_api_key();
+            tracing::warn!("[CONFIG] 检测到默认 API Key，已自动生成强随机 Key");
+            config.server.api_key = new_key;
+            // 保存更新后的配置
+            if let Err(e) = save_config_yaml(&config) {
+                tracing::error!("[CONFIG] 保存配置失败: {}", e);
+            }
+        }
         return Ok(config);
     }
 
     // 回退到 JSON 配置
     if json_path.exists() {
         let content = std::fs::read_to_string(&json_path)?;
-        let config = serde_json::from_str(&content)?;
+        let mut config: Config = serde_json::from_str(&content)?;
+        // 如果配置中使用默认 API Key，生成强随机 Key 并保存
+        if is_default_api_key(&config.server.api_key) {
+            let new_key = generate_secure_api_key();
+            tracing::warn!("[CONFIG] 检测到默认 API Key，已自动生成强随机 Key");
+            config.server.api_key = new_key;
+            // 保存更新后的配置（迁移到 YAML）
+            if let Err(e) = save_config_yaml(&config) {
+                tracing::error!("[CONFIG] 保存配置失败: {}", e);
+            }
+        }
         return Ok(config);
     }
 
-    // 都不存在，返回默认配置
-    Ok(Config::default())
+    // 都不存在，创建默认配置并生成强随机 API Key
+    let mut config = Config::default();
+    let new_key = generate_secure_api_key();
+    tracing::info!("[CONFIG] 首次启动，已生成强随机 API Key");
+    config.server.api_key = new_key;
+    // 保存初始配置
+    if let Err(e) = save_config_yaml(&config) {
+        tracing::error!("[CONFIG] 保存初始配置失败: {}", e);
+    }
+    Ok(config)
 }
 
 /// 保存配置（同时写入 YAML 与 JSON，兼容旧版）
@@ -698,6 +733,10 @@ pub fn save_config_yaml(config: &Config) -> Result<(), Box<dyn std::error::Error
     let path = ConfigManager::default_config_path();
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
+    }
+    if path.exists() {
+        let backup_path = path.with_extension("yaml.backup");
+        let _ = std::fs::copy(&path, &backup_path);
     }
     let content = serde_yaml::to_string(config)?;
     std::fs::write(&path, content)?;

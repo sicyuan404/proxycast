@@ -340,6 +340,19 @@ fn default_api_key() -> String {
     DEFAULT_API_KEY.to_string()
 }
 
+/// 生成安全 API Key（32 字节随机）
+pub fn generate_secure_api_key() -> String {
+    use rand::distributions::Alphanumeric;
+    use rand::Rng;
+
+    let token: String = rand::thread_rng()
+        .sample_iter(&Alphanumeric)
+        .take(32)
+        .map(char::from)
+        .collect();
+    format!("pc_{token}")
+}
+
 /// 是否为默认 API Key
 pub fn is_default_api_key(api_key: &str) -> bool {
     api_key == DEFAULT_API_KEY

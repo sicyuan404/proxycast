@@ -24,6 +24,7 @@ use std::{
     task::{Context, Poll},
     time::{Duration, Instant},
 };
+use subtle::ConstantTimeEq;
 use tower::{Layer, Service};
 
 const MAX_AUTH_FAILURES: u32 = 5;
@@ -182,6 +183,10 @@ impl<S> ManagementAuthService<S> {
         let mut map = failure_map().lock().unwrap();
         map.remove(client_id);
     }
+
+    fn secret_key_matches(provided: &str, expected: &str) -> bool {
+        provided.as_bytes().ct_eq(expected.as_bytes()).into()
+    }
 }
 
 impl<S> Service<Request<Body>> for ManagementAuthService<S>
@@ -240,7 +245,7 @@ where
             // 3. 验证 secret_key
             let provided_key = Self::extract_secret_key(&req);
             match provided_key {
-                Some(key) if key == secret_key => {
+                Some(key) if Self::secret_key_matches(&key, &secret_key) => {
                     // 认证成功，继续处理请求
                     tracing::debug!("[MANAGEMENT_AUTH] Auth successful from {:?}", client_addr);
                     Self::record_success(&client_id);

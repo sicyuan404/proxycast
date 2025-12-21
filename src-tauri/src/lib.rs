@@ -19,7 +19,6 @@ pub mod telemetry;
 pub mod tray;
 pub mod websocket;
 
-use rand::{distributions::Alphanumeric, Rng};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tauri::{Manager, Runtime};
@@ -177,12 +176,7 @@ pub type AppState = Arc<RwLock<server::ServerState>>;
 pub type LogState = Arc<RwLock<logger::LogStore>>;
 
 fn generate_api_key() -> String {
-    let token: String = rand::thread_rng()
-        .sample_iter(&Alphanumeric)
-        .take(32)
-        .map(char::from)
-        .collect();
-    format!("pc_{token}")
+    config::generate_secure_api_key()
 }
 
 #[tauri::command]
