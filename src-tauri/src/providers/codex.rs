@@ -673,18 +673,55 @@ impl CodexProvider {
     }
 
     /// Refresh the access token using the refresh token
+    ///
+    /// Supports three authentication modes (in priority order):
+    /// 1. **API Key Mode**: Returns the API key directly (no refresh needed)
+    /// 2. **OAuth Mode**: Refreshes the access token using the refresh token
+    /// 3. **Access Token Mode**: Returns the existing access token (may be expired)
+    ///
+    /// # Returns
+    /// * `Ok(String)` - The access token or API key
+    /// * `Err` - If no credentials are available
+    ///
+    /// # Examples
+    /// ```no_run
+    /// // API Key mode
+    /// provider.credentials.api_key = Some("sk-test".to_string());
+    /// let token = provider.refresh_token().await?; // Returns "sk-test"
+    ///
+    /// // OAuth mode
+    /// provider.credentials.refresh_token = Some("refresh_token".to_string());
+    /// let token = provider.refresh_token().await?; // Refreshes and returns new access_token
+    ///
+    /// // Access Token mode (fallback)
+    /// provider.credentials.access_token = Some("access_token".to_string());
+    /// let token = provider.refresh_token().await?; // Returns "access_token" (with warning)
+    /// ```
     pub async fn refresh_token(&mut self) -> Result<String, Box<dyn Error + Send + Sync>> {
-        // API Key 模式无需刷新
+        // 1. API Key 模式无需刷新（优先级最高）
         if let Some(api_key) = self.get_api_key() {
             return Ok(api_key.to_string());
         }
 
-        let refresh_token = self.credentials.refresh_token.as_ref().ok_or_else(|| {
-            create_config_error(
-                "没有可用的 refresh_token 或 api_key。请确保凭证文件包含 refresh_token/refreshToken 或 api_key/apiKey 字段，\
-                    或使用 OAuth 登录功能重新获取凭证（需要 refresh_token）",
-            )
-        })?;
+        // 2. 无 refresh_token 时的降级处理
+        if self.credentials.refresh_token.is_none() {
+            // 2a. 有 access_token：返回（可能过期，由上层处理）
+            if let Some(ref access_token) = self.credentials.access_token {
+                tracing::warn!("[CODEX] 没有 refresh_token，返回现有 access_token（可能已过期）");
+                return Ok(access_token.clone());
+            }
+
+            // 2b. 无任何凭证：清晰的错误指导
+            return Err(create_config_error(
+                "没有可用的认证凭证。请配置以下任一方式：\n\
+                 1. API Key 模式：在凭证文件中添加 api_key/apiKey 字段\n\
+                 2. OAuth 模式：使用 OAuth 登录获取 refresh_token\n\
+                 3. Access Token 模式：在凭证文件中添加 access_token/accessToken 字段",
+            ));
+        }
+
+        // 3. OAuth 刷新流程（标准流程）
+        let refresh_token = self.credentials.refresh_token.as_ref().unwrap();
 
         tracing::info!("[CODEX] 正在刷新 access token");
 
@@ -1589,5 +1626,64 @@ mod tests {
         assert_eq!(result["temperature"], 0.7);
         assert_eq!(result["max_output_tokens"], 1000);
         assert_eq!(result["top_p"], 0.9);
+    }
+
+    #[tokio::test]
+    async fn test_refresh_token_with_only_access_token() {
+        // 场景：只有 access_token（无 refresh_token 和 api_key）
+        let mut provider = CodexProvider::new();
+        provider.credentials.access_token = Some("test_access_token".to_string());
+        provider.credentials.refresh_token = None;
+        provider.credentials.api_key = None;
+
+        let result = provider.refresh_token().await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "test_access_token");
+    }
+
+    #[tokio::test]
+    async fn test_refresh_token_with_no_credentials() {
+        // 场景：无任何凭证（api_key、refresh_token、access_token 均为 None）
+        let mut provider = CodexProvider::new();
+        provider.credentials.api_key = None;
+        provider.credentials.refresh_token = None;
+        provider.credentials.access_token = None;
+
+        let result = provider.refresh_token().await;
+        assert!(result.is_err());
+        let error_msg = result.unwrap_err().to_string();
+        assert!(error_msg.contains("没有可用的认证凭证"));
+        assert!(error_msg.contains("API Key 模式"));
+        assert!(error_msg.contains("OAuth 模式"));
+        assert!(error_msg.contains("Access Token 模式"));
+    }
+
+    #[tokio::test]
+    async fn test_api_key_priority_over_refresh_token() {
+        // 场景：同时有 api_key 和 refresh_token
+        let mut provider = CodexProvider::new();
+        provider.credentials.api_key = Some("sk-test-api-key".to_string());
+        provider.credentials.refresh_token = Some("test_refresh_token".to_string());
+        provider.credentials.access_token = Some("test_access_token".to_string());
+
+        let result = provider.refresh_token().await;
+        assert!(result.is_ok());
+        // 应该返回 API Key（优先级最高）
+        assert_eq!(result.unwrap(), "sk-test-api-key");
+    }
+
+    #[tokio::test]
+    async fn test_refresh_token_with_expired_access_token() {
+        // 场景：只有 access_token（已过期）
+        let mut provider = CodexProvider::new();
+        provider.credentials.access_token = Some("expired_access_token".to_string());
+        provider.credentials.expires_at = Some("2020-01-01T00:00:00Z".to_string());
+        provider.credentials.refresh_token = None;
+        provider.credentials.api_key = None;
+
+        let result = provider.refresh_token().await;
+        assert!(result.is_ok());
+        // 应该返回 access_token（即使已过期，由上层处理）
+        assert_eq!(result.unwrap(), "expired_access_token");
     }
 }
