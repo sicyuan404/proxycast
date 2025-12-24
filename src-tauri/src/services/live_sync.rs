@@ -7,7 +7,7 @@ use std::path::PathBuf;
 pub fn get_app_config_path(app_type: &AppType) -> Option<PathBuf> {
     let home = dirs::home_dir()?;
     match app_type {
-        AppType::Claude => Some(home.join(".claude").join("settings.json")),
+        AppType::Claude => Some(home.join(".claude.json")),
         AppType::Codex => Some(home.join(".codex")),
         AppType::Gemini => Some(home.join(".gemini")),
         AppType::ProxyCast => None,
@@ -56,16 +56,12 @@ fn clean_claude_auth_conflict(settings: &mut Value) {
     }
 }
 
-/// Sync Claude settings to ~/.claude/settings.json
+/// Sync Claude settings to ~/.claude.json
 fn sync_claude_settings(
     provider: &Provider,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let home = dirs::home_dir().ok_or("Cannot find home directory")?;
-    let claude_dir = home.join(".claude");
-    let config_path = claude_dir.join("settings.json");
-
-    // Create directory if not exists
-    std::fs::create_dir_all(&claude_dir)?;
+    let config_path = home.join(".claude.json");
 
     // Read existing settings to preserve other fields
     let mut settings: Value = if config_path.exists() {
@@ -201,7 +197,7 @@ pub fn read_live_settings(
 
     match app_type {
         AppType::Claude => {
-            let path = home.join(".claude").join("settings.json");
+            let path = home.join(".claude.json");
             if !path.exists() {
                 return Err("Claude settings file not found".into());
             }
@@ -398,7 +394,7 @@ pub fn check_config_sync(
 fn get_config_last_modified(app_type: &AppType) -> Option<String> {
     let home = dirs::home_dir()?;
     let path = match app_type {
-        AppType::Claude => home.join(".claude").join("settings.json"),
+        AppType::Claude => home.join(".claude.json"),
         AppType::Codex => home.join(".codex").join("auth.json"),
         AppType::Gemini => home.join(".gemini").join(".env"),
         AppType::ProxyCast => return None,

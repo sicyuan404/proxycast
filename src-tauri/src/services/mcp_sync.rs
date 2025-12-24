@@ -24,7 +24,7 @@ fn escape_toml_string(s: &str) -> String {
 pub fn get_mcp_config_path(app_type: &AppType) -> Option<PathBuf> {
     let home = dirs::home_dir()?;
     match app_type {
-        AppType::Claude => Some(home.join(".claude").join("settings.json")),
+        AppType::Claude => Some(home.join(".claude.json")),
         AppType::Codex => Some(home.join(".codex").join("config.toml")),
         AppType::Gemini => Some(home.join(".gemini").join("settings.json")),
         AppType::ProxyCast => None,
@@ -73,17 +73,13 @@ pub fn sync_mcp_to_app(
     }
 }
 
-/// Sync MCP servers to Claude's settings.json
-/// Claude uses the mcpServers field in ~/.claude/settings.json
+/// Sync MCP servers to Claude's .claude.json
+/// Claude uses the mcpServers field in ~/.claude.json
 fn sync_mcp_to_claude(
     servers: &[&McpServer],
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let home = dirs::home_dir().ok_or("Cannot find home directory")?;
-    let claude_dir = home.join(".claude");
-    let config_path = claude_dir.join("settings.json");
-
-    // Create directory if not exists
-    std::fs::create_dir_all(&claude_dir)?;
+    let config_path = home.join(".claude.json");
 
     // Read existing settings
     let mut settings: Value = if config_path.exists() {
@@ -259,7 +255,7 @@ pub fn remove_mcp_from_app(
 
 fn remove_mcp_from_claude(server_id: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let home = dirs::home_dir().ok_or("Cannot find home directory")?;
-    let config_path = home.join(".claude").join("settings.json");
+    let config_path = home.join(".claude.json");
 
     if !config_path.exists() {
         return Ok(());
@@ -357,11 +353,11 @@ pub fn remove_mcp_from_all_apps(
     Ok(())
 }
 
-/// Import MCP servers from Claude's settings.json
+/// Import MCP servers from Claude's .claude.json
 pub fn import_mcp_from_claude(
 ) -> Result<Vec<crate::models::McpServer>, Box<dyn std::error::Error + Send + Sync>> {
     let home = dirs::home_dir().ok_or("Cannot find home directory")?;
-    let config_path = home.join(".claude").join("settings.json");
+    let config_path = home.join(".claude.json");
 
     if !config_path.exists() {
         return Ok(Vec::new());

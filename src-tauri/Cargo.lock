@@ -3377,7 +3377,7 @@ dependencies = [
 
 [[package]]
 name = "proxycast"
-version = "0.17.7"
+version = "0.17.8"
 dependencies = [
  "anyhow",
  "async-stream",

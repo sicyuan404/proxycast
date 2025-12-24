@@ -8,7 +8,7 @@ interface LiveConfigModalProps {
 }
 
 const configPaths: Record<AppType, string> = {
-  claude: "~/.claude/settings.json",
+  claude: "~/.claude.json",
   codex: "~/.codex/auth.json & config.toml",
   gemini: "~/.gemini/.env & settings.json",
   proxycast: "",
