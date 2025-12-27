@@ -97,10 +97,12 @@ fn copy_and_rename_credential_file(
                 token_len < 100 || refresh_token.ends_with("...") || refresh_token.contains("...");
 
             if is_truncated {
+                // 安全地截取前 50 个字符（避免 UTF-8 边界 panic）
+                let preview: String = refresh_token.chars().take(50).collect();
                 tracing::warn!(
                     "[KIRO] 检测到 refreshToken 可能被截断！长度: {}, 内容: {}... (仍允许添加，刷新时会提示)",
                     token_len,
-                    &refresh_token[..std::cmp::min(50, token_len)]
+                    preview
                 );
                 // 不再阻止添加，只记录警告
                 // 在刷新 Token 时会检测并提示用户
@@ -1958,7 +1960,8 @@ pub async fn get_kiro_credential_fingerprint(
 
     // 生成 Machine ID
     let machine_id = generate_machine_id_from_credentials(profile_arn, client_id);
-    let machine_id_short = machine_id[..16].to_string();
+    // 安全地截取前 16 个字符（避免越界 panic）
+    let machine_id_short: String = machine_id.chars().take(16).collect();
 
     // 获取认证方式
     let auth_method = provider
@@ -2270,7 +2273,7 @@ pub async fn start_kiro_builder_id_login(
 
     tracing::info!(
         "[Kiro Builder ID] 客户端注册成功: {}...",
-        &client_id[..30.min(client_id.len())]
+        client_id.chars().take(30).collect::<String>()
     );
 
     // Step 2: 发起设备授权
