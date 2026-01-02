@@ -246,6 +246,11 @@ fn is_enable_thinking(model: &str) -> bool {
         || model == "gpt-oss-120b-medium"
 }
 
+/// 检查是否是图片生成模型
+fn is_image_generation_model(model: &str) -> bool {
+    model == "gemini-3-pro-image" || model == "gemini-3-pro-image-preview"
+}
+
 // ============================================================================
 // 主转换函数
 // ============================================================================
@@ -523,6 +528,15 @@ pub fn convert_openai_to_antigravity_with_context(
         thinking_config: None,
         response_modalities: None,
     };
+
+    // 为图片生成模型设置 response_modalities
+    if is_image_generation_model(actual_model) {
+        generation_config.response_modalities = Some(vec!["TEXT".to_string(), "IMAGE".to_string()]);
+        tracing::info!(
+            "[ANTIGRAVITY] 图片生成模型 {} 已启用 IMAGE 响应模态",
+            actual_model
+        );
+    }
 
     // 处理 reasoning_effort（思维链配置）
     if supports_thinking {
