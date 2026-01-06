@@ -201,12 +201,7 @@ function App() {
 
   // 3. 需要引导时显示引导向导
   if (needsOnboarding) {
-    return (
-      <>
-        <OnboardingWizard onComplete={handleOnboardingComplete} />
-        <Toaster />
-      </>
-    );
+    return <OnboardingWizard onComplete={handleOnboardingComplete} />;
   }
 
   // 4. 正常主界面

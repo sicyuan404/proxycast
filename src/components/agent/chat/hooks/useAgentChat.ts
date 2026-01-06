@@ -237,8 +237,11 @@ export function useAgentChat() {
       setSessionId(response.session_id);
       return response.session_id;
     } catch (error) {
-      console.error("Auto-creation failed", error);
-      toast.error("Failed to initialize session");
+      console.error("[AgentChat] Auto-creation failed:", error);
+      toast.error("Failed to initialize session", {
+        id: "session-init-error",
+        duration: 8000,
+      });
       return null;
     }
   };
@@ -399,7 +402,11 @@ export function useAgentChat() {
 
           case "error":
             // 错误处理
-            toast.error(`响应错误: ${data.message}`);
+            console.error("[AgentChat] Stream error:", data.message);
+            toast.error(`响应错误: ${data.message}`, {
+              id: `stream-error-${Date.now()}`,
+              duration: 8000,
+            });
             setMessages((prev) =>
               prev.map((msg) =>
                 msg.id === assistantMsgId
@@ -517,7 +524,11 @@ export function useAgentChat() {
         providerType, // 传递用户选择的 provider
       );
     } catch (error) {
-      toast.error(`发送失败: ${error}`);
+      console.error("[AgentChat] Send failed:", error);
+      toast.error(`发送失败: ${error}`, {
+        id: `send-error-${Date.now()}`,
+        duration: 8000,
+      });
       // Remove the optimistic assistant message on failure
       setMessages((prev) => prev.filter((msg) => msg.id !== assistantMsgId));
       setIsSending(false);
