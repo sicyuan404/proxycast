@@ -143,6 +143,21 @@ export async function loadPluginUI(
       `[PluginLoader] 全局变量检查: React=${typeof (window as unknown as Record<string, unknown>).React}, ProxyCastPluginComponents=${typeof (window as unknown as Record<string, unknown>).ProxyCastPluginComponents}`,
     );
 
+    // 检查 ProxyCastPluginComponents 中的所有导出
+    const components = (window as unknown as Record<string, unknown>)
+      .ProxyCastPluginComponents as Record<string, unknown> | undefined;
+    if (components) {
+      const undefinedKeys = Object.keys(components).filter(
+        (key) => components[key] === undefined,
+      );
+      if (undefinedKeys.length > 0) {
+        console.error(
+          `[PluginLoader] ProxyCastPluginComponents 中有 undefined 的导出:`,
+          undefinedKeys,
+        );
+      }
+    }
+
     // 执行插件代码
     await executeScript(content);
 

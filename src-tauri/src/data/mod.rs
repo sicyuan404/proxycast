@@ -1,7 +1,4 @@
 //! 静态数据模块
 //!
-//! 包含本地硬编码的模型数据等
-
-pub mod local_models;
-
-pub use local_models::get_local_models;
+//! 模型数据现在从 aiclientproxy/models 仓库获取
+//! 本地硬编码数据已迁移到独立仓库: https://github.com/aiclientproxy/models

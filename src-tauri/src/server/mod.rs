@@ -1467,8 +1467,18 @@ async fn amp_chat_completions(
     );
 
     // 尝试根据 provider 名称选择凭证（带智能降级）
+    eprintln!(
+        "[AMP] 开始查找凭证: provider={}, model={}, db={}",
+        provider,
+        request.model,
+        state.db.is_some()
+    );
     let credential = match &state.db {
         Some(db) => {
+            eprintln!(
+                "[AMP] 调用 select_credential_with_fallback, provider_id_hint={}",
+                provider
+            );
             // 首先尝试按 provider 类型选择（带智能降级）
             if let Ok(Some(cred)) = state.pool_service.select_credential_with_fallback(
                 db,
@@ -1477,20 +1487,30 @@ async fn amp_chat_completions(
                 Some(&request.model),
                 Some(&provider), // provider_id_hint 使用路由中的 provider 名称
             ) {
+                eprintln!(
+                    "[AMP] select_credential_with_fallback 找到凭证: {:?}",
+                    cred.name
+                );
                 Some(cred)
             }
             // 然后尝试按名称查找
             else if let Ok(Some(cred)) = state.pool_service.get_by_name(db, &provider) {
+                eprintln!("[AMP] get_by_name 找到凭证: {:?}", cred.name);
                 Some(cred)
             }
             // 最后尝试按 UUID 查找
             else if let Ok(Some(cred)) = state.pool_service.get_by_uuid(db, &provider) {
+                eprintln!("[AMP] get_by_uuid 找到凭证: {:?}", cred.name);
                 Some(cred)
             } else {
+                eprintln!("[AMP] 未找到任何凭证 for provider '{}'", provider);
                 None
             }
         }
-        None => None,
+        None => {
+            eprintln!("[AMP] 数据库未初始化");
+            None
+        }
     };
 
     match credential {

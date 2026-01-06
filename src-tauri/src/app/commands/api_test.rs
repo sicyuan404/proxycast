@@ -3,6 +3,7 @@
 //! 包含 API 测试、模型列表和兼容性检查命令。
 
 use crate::app::types::{AppState, LogState, ProviderType};
+use crate::commands::model_registry_cmd::ModelRegistryState;
 
 /// 测试结果
 #[derive(serde::Serialize)]
@@ -279,82 +280,24 @@ pub async fn check_api_compatibility(
 
 /// 获取可用模型列表
 #[tauri::command]
-pub async fn get_available_models() -> Result<Vec<ModelInfo>, String> {
-    Ok(vec![
-        // Kiro/Claude models
-        ModelInfo {
-            id: "claude-sonnet-4-5".to_string(),
+pub async fn get_available_models(
+    state: tauri::State<'_, ModelRegistryState>,
+) -> Result<Vec<ModelInfo>, String> {
+    let guard = state.read().await;
+    let service = guard
+        .as_ref()
+        .ok_or_else(|| "模型注册服务未初始化".to_string())?;
+
+    let models = service.get_all_models().await;
+
+    Ok(models
+        .into_iter()
+        .map(|m| ModelInfo {
+            id: m.id,
             object: "model".to_string(),
-            owned_by: "anthropic".to_string(),
-        },
-        ModelInfo {
-            id: "claude-sonnet-4-5-20250514".to_string(),
-            object: "model".to_string(),
-            owned_by: "anthropic".to_string(),
-        },
-        ModelInfo {
-            id: "claude-sonnet-4-5-20250929".to_string(),
-            object: "model".to_string(),
-            owned_by: "anthropic".to_string(),
-        },
-        ModelInfo {
-            id: "claude-3-7-sonnet-20250219".to_string(),
-            object: "model".to_string(),
-            owned_by: "anthropic".to_string(),
-        },
-        ModelInfo {
-            id: "claude-3-5-sonnet-latest".to_string(),
-            object: "model".to_string(),
-            owned_by: "anthropic".to_string(),
-        },
-        ModelInfo {
-            id: "claude-opus-4-5-20250514".to_string(),
-            object: "model".to_string(),
-            owned_by: "anthropic".to_string(),
-        },
-        ModelInfo {
-            id: "claude-haiku-4-5-20250514".to_string(),
-            object: "model".to_string(),
-            owned_by: "anthropic".to_string(),
-        },
-        // Gemini models
-        ModelInfo {
-            id: "gemini-2.5-flash".to_string(),
-            object: "model".to_string(),
-            owned_by: "google".to_string(),
-        },
-        ModelInfo {
-            id: "gemini-2.5-flash-lite".to_string(),
-            object: "model".to_string(),
-            owned_by: "google".to_string(),
-        },
-        ModelInfo {
-            id: "gemini-2.5-pro".to_string(),
-            object: "model".to_string(),
-            owned_by: "google".to_string(),
-        },
-        ModelInfo {
-            id: "gemini-2.5-pro-preview-06-05".to_string(),
-            object: "model".to_string(),
-            owned_by: "google".to_string(),
-        },
-        ModelInfo {
-            id: "gemini-3-pro-preview".to_string(),
-            object: "model".to_string(),
-            owned_by: "google".to_string(),
-        },
-        // Qwen models
-        ModelInfo {
-            id: "qwen3-coder-plus".to_string(),
-            object: "model".to_string(),
-            owned_by: "alibaba".to_string(),
-        },
-        ModelInfo {
-            id: "qwen3-coder-flash".to_string(),
-            object: "model".to_string(),
-            owned_by: "alibaba".to_string(),
-        },
-    ])
+            owned_by: m.provider_id,
+        })
+        .collect())
 }
 
 /// 测试 API

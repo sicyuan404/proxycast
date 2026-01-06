@@ -220,6 +220,7 @@ fn arb_config() -> impl Strategy<Value = Config> {
             endpoint_providers: crate::config::EndpointProvidersConfig::default(),
             minimize_to_tray: true,
             models: crate::config::ModelsConfig::default(),
+            agent: crate::config::NativeAgentConfig::default(),
         })
 }
 
@@ -494,6 +495,7 @@ fn arb_valid_config() -> impl Strategy<Value = Config> {
             endpoint_providers: crate::config::EndpointProvidersConfig::default(),
             minimize_to_tray: true,
             models: crate::config::ModelsConfig::default(),
+            agent: crate::config::NativeAgentConfig::default(),
         })
 }
 
@@ -540,6 +542,7 @@ fn arb_invalid_config() -> impl Strategy<Value = Config> {
                     endpoint_providers: crate::config::EndpointProvidersConfig::default(),
                     minimize_to_tray: true,
                     models: crate::config::ModelsConfig::default(),
+                    agent: crate::config::NativeAgentConfig::default(),
                 };
                 // 根据类型使配置无效
                 match invalid_type {

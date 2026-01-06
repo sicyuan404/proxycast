@@ -787,101 +787,144 @@ pub async fn chat_completions(
     let credential = if credential.is_none() {
         eprintln!("[CHAT_COMPLETIONS] Provider Pool 中未找到凭证，尝试 API Key Provider...");
 
-        // 根据 selected_provider 映射到 ApiProviderType
         use crate::database::dao::api_key_provider::ApiProviderType;
-        let api_provider_type = match selected_provider.to_lowercase().as_str() {
-            "anthropic" | "claude" => Some(ApiProviderType::Anthropic),
-            "openai" => Some(ApiProviderType::Openai),
-            "gemini" => Some(ApiProviderType::Gemini),
-            // 以下都是 OpenAI 兼容的 Provider
-            "deepseek" | "moonshot" | "groq" | "grok" | "mistral" | "perplexity" | "cohere"
-            | "openrouter" | "silicon" => Some(ApiProviderType::Openai),
-            _ => None,
-        };
+        let provider_id_lower = selected_provider.to_lowercase();
 
-        if let (Some(db), Some(api_type)) = (&state.db, api_provider_type) {
+        // 策略 1: 优先按 provider_id 直接查找（支持 deepseek, moonshot 等 60+ Provider）
+        // 这些 Provider 在 API Key Provider 中有独立配置
+        let mut found_credential: Option<crate::models::provider_pool_model::ProviderCredential> =
+            None;
+
+        if let Some(db) = &state.db {
+            // 先尝试按 provider_id 直接查找
             eprintln!(
-                "[CHAT_COMPLETIONS] 尝试从 API Key Provider 类型 '{:?}' 获取凭证",
-                api_type
+                "[CHAT_COMPLETIONS] 尝试按 provider_id '{}' 直接查找凭证",
+                provider_id_lower
             );
 
-            // 使用按类型获取的方法（包括自定义 Provider）
-            match state.api_key_service.get_next_api_key_by_type(db, api_type) {
-                Ok(Some((_key_id, api_key, provider_info))) => {
+            match state.api_key_service.get_fallback_credential(
+                db,
+                &crate::models::provider_pool_model::PoolProviderType::OpenAI,
+                Some(&provider_id_lower),
+            ) {
+                Ok(Some(cred)) => {
                     eprintln!(
-                        "[CHAT_COMPLETIONS] 从 API Key Provider 获取到凭证: provider={}, api_host={}",
-                        provider_info.name,
-                        provider_info.api_host
+                        "[CHAT_COMPLETIONS] 通过 provider_id '{}' 找到凭证: name={:?}",
+                        provider_id_lower, cred.name
                     );
-
-                    let base_url = if provider_info.api_host.is_empty() {
-                        None
-                    } else {
-                        Some(provider_info.api_host.clone())
-                    };
-
-                    let provider_type = match provider_info.provider_type {
-                        ApiProviderType::Anthropic => crate::ProviderType::Anthropic,
-                        ApiProviderType::Openai | ApiProviderType::OpenaiResponse => {
-                            crate::ProviderType::OpenAI
-                        }
-                        ApiProviderType::Gemini => crate::ProviderType::GeminiApiKey,
-                        _ => crate::ProviderType::OpenAI,
-                    };
-
-                    // 根据 provider_type 创建对应的 CredentialData
-                    let credential_data = match provider_type {
-                        crate::ProviderType::Anthropic => {
-                            crate::models::provider_pool_model::CredentialData::AnthropicKey {
-                                api_key: api_key.clone(),
-                                base_url,
-                            }
-                        }
-                        crate::ProviderType::GeminiApiKey => {
-                            crate::models::provider_pool_model::CredentialData::GeminiApiKey {
-                                api_key: api_key.clone(),
-                                base_url,
-                                excluded_models: vec![],
-                            }
-                        }
-                        _ => crate::models::provider_pool_model::CredentialData::OpenAIKey {
-                            api_key: api_key.clone(),
-                            base_url,
-                        },
-                    };
-
-                    // 构建 ProviderCredential
-                    let mut cred = crate::models::provider_pool_model::ProviderCredential::new(
-                        provider_type,
-                        credential_data,
-                    );
-                    cred.name = Some(provider_info.name.clone());
-
                     state.logs.write().await.add(
                         "info",
                         &format!(
-                            "[ROUTE] Using API Key Provider credential: provider={}, type={:?}",
-                            provider_info.name, provider_info.provider_type
+                            "[ROUTE] Using API Key Provider credential by provider_id: {}",
+                            provider_id_lower
                         ),
                     );
-
-                    Some(cred)
+                    found_credential = Some(cred);
                 }
                 Ok(None) => {
                     eprintln!(
-                        "[CHAT_COMPLETIONS] API Key Provider 类型 '{:?}' 没有可用的 API Key",
-                        api_type
+                        "[CHAT_COMPLETIONS] provider_id '{}' 未找到凭证，尝试按类型查找",
+                        provider_id_lower
                     );
-                    None
                 }
                 Err(e) => {
-                    eprintln!("[CHAT_COMPLETIONS] 从 API Key Provider 获取凭证失败: {}", e);
-                    None
+                    eprintln!("[CHAT_COMPLETIONS] 按 provider_id 查找凭证失败: {}", e);
                 }
             }
-        } else {
-            None
+
+            // 策略 2: 如果按 provider_id 未找到，按类型查找
+            if found_credential.is_none() {
+                let api_provider_type = match provider_id_lower.as_str() {
+                    "anthropic" | "claude" => Some(ApiProviderType::Anthropic),
+                    "openai" => Some(ApiProviderType::Openai),
+                    "gemini" => Some(ApiProviderType::Gemini),
+                    // 以下都是 OpenAI 兼容的 Provider，但优先按 provider_id 查找已在上面处理
+                    "deepseek" | "moonshot" | "groq" | "grok" | "mistral" | "perplexity"
+                    | "cohere" | "openrouter" | "silicon" => Some(ApiProviderType::Openai),
+                    _ => None,
+                };
+
+                if let Some(api_type) = api_provider_type {
+                    eprintln!(
+                        "[CHAT_COMPLETIONS] 尝试从 API Key Provider 类型 '{:?}' 获取凭证",
+                        api_type
+                    );
+
+                    match state.api_key_service.get_next_api_key_by_type(db, api_type) {
+                        Ok(Some((_key_id, api_key, provider_info))) => {
+                            eprintln!(
+                                "[CHAT_COMPLETIONS] 从 API Key Provider 获取到凭证: provider={}, api_host={}",
+                                provider_info.name,
+                                provider_info.api_host
+                            );
+
+                            let base_url = if provider_info.api_host.is_empty() {
+                                None
+                            } else {
+                                Some(provider_info.api_host.clone())
+                            };
+
+                            let provider_type = match provider_info.provider_type {
+                                ApiProviderType::Anthropic => crate::ProviderType::Anthropic,
+                                ApiProviderType::Openai | ApiProviderType::OpenaiResponse => {
+                                    crate::ProviderType::OpenAI
+                                }
+                                ApiProviderType::Gemini => crate::ProviderType::GeminiApiKey,
+                                _ => crate::ProviderType::OpenAI,
+                            };
+
+                            let credential_data = match provider_type {
+                                crate::ProviderType::Anthropic => {
+                                    crate::models::provider_pool_model::CredentialData::AnthropicKey {
+                                        api_key: api_key.clone(),
+                                        base_url,
+                                    }
+                                }
+                                crate::ProviderType::GeminiApiKey => {
+                                    crate::models::provider_pool_model::CredentialData::GeminiApiKey {
+                                        api_key: api_key.clone(),
+                                        base_url,
+                                        excluded_models: vec![],
+                                    }
+                                }
+                                _ => crate::models::provider_pool_model::CredentialData::OpenAIKey {
+                                    api_key: api_key.clone(),
+                                    base_url,
+                                },
+                            };
+
+                            let mut cred =
+                                crate::models::provider_pool_model::ProviderCredential::new(
+                                    provider_type,
+                                    credential_data,
+                                );
+                            cred.name = Some(provider_info.name.clone());
+
+                            state.logs.write().await.add(
+                                "info",
+                                &format!(
+                                    "[ROUTE] Using API Key Provider credential: provider={}, type={:?}",
+                                    provider_info.name, provider_info.provider_type
+                                ),
+                            );
+
+                            found_credential = Some(cred);
+                        }
+                        Ok(None) => {
+                            eprintln!(
+                                "[CHAT_COMPLETIONS] API Key Provider 类型 '{:?}' 没有可用的 API Key",
+                                api_type
+                            );
+                        }
+                        Err(e) => {
+                            eprintln!("[CHAT_COMPLETIONS] 从 API Key Provider 获取凭证失败: {}", e);
+                        }
+                    }
+                }
+            }
         }
+
+        found_credential
     } else {
         credential
     };

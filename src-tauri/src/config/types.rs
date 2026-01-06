@@ -314,6 +314,102 @@ pub struct Config {
     /// 模型配置（动态加载 Provider 和模型列表）
     #[serde(default)]
     pub models: ModelsConfig,
+    /// Native Agent 配置
+    #[serde(default)]
+    pub agent: NativeAgentConfig,
+}
+
+// ============ Native Agent 配置类型 ============
+
+/// Native Agent 配置
+///
+/// 配置内置 Agent 的行为，包括系统提示词、工具使用规则等
+/// 参考 Manus Agent 的模块化设计，支持灵活配置
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct NativeAgentConfig {
+    /// 是否使用默认系统提示词
+    /// 当 custom_system_prompt 为空时，如果此项为 true 则使用内置默认提示词
+    #[serde(default = "default_use_default_prompt")]
+    pub use_default_system_prompt: bool,
+    /// 自定义系统提示词
+    /// 如果设置了此项，将覆盖默认系统提示词
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub custom_system_prompt: Option<String>,
+    /// 系统提示词模板文件路径（支持 ~ 展开）
+    /// 可以将系统提示词存储在外部文件中，便于管理和版本控制
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub system_prompt_file: Option<String>,
+    /// 默认模型
+    #[serde(default = "default_agent_model")]
+    pub default_model: String,
+    /// 默认温度参数
+    #[serde(default = "default_temperature")]
+    pub temperature: f32,
+    /// 默认最大 token 数
+    #[serde(default = "default_max_tokens")]
+    pub max_tokens: u32,
+}
+
+fn default_use_default_prompt() -> bool {
+    true
+}
+
+fn default_agent_model() -> String {
+    "claude-sonnet-4-20250514".to_string()
+}
+
+fn default_temperature() -> f32 {
+    0.7
+}
+
+fn default_max_tokens() -> u32 {
+    4096
+}
+
+impl Default for NativeAgentConfig {
+    fn default() -> Self {
+        Self {
+            use_default_system_prompt: default_use_default_prompt(),
+            custom_system_prompt: None,
+            system_prompt_file: None,
+            default_model: default_agent_model(),
+            temperature: default_temperature(),
+            max_tokens: default_max_tokens(),
+        }
+    }
+}
+
+impl NativeAgentConfig {
+    /// 获取有效的系统提示词
+    ///
+    /// 优先级：
+    /// 1. system_prompt_file（外部文件）
+    /// 2. custom_system_prompt（配置中的自定义提示词）
+    /// 3. 如果 use_default_system_prompt 为 true，返回 None 让调用方使用默认提示词
+    /// 4. 否则返回 None（不使用任何系统提示词）
+    pub fn get_effective_system_prompt(&self) -> Option<String> {
+        // 优先从文件加载
+        if let Some(file_path) = &self.system_prompt_file {
+            let expanded_path = crate::config::expand_tilde(file_path);
+            if let Ok(content) = std::fs::read_to_string(&expanded_path) {
+                let trimmed = content.trim();
+                if !trimmed.is_empty() {
+                    return Some(trimmed.to_string());
+                }
+            }
+        }
+
+        // 其次使用配置中的自定义提示词
+        if let Some(prompt) = &self.custom_system_prompt {
+            let trimmed = prompt.trim();
+            if !trimmed.is_empty() {
+                return Some(trimmed.to_string());
+            }
+        }
+
+        // 返回 None，让调用方根据 use_default_system_prompt 决定是否使用默认提示词
+        None
+    }
 }
 
 fn default_minimize_to_tray() -> bool {
@@ -1116,6 +1212,7 @@ impl Default for Config {
             endpoint_providers: EndpointProvidersConfig::default(),
             minimize_to_tray: default_minimize_to_tray(),
             models: ModelsConfig::default(),
+            agent: NativeAgentConfig::default(),
         }
     }
 }

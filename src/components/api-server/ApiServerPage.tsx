@@ -227,6 +227,19 @@ export function ApiServerPage() {
     ollama: "ollama",
   };
 
+  // 根据 Provider type 获取图标类型（用于自定义 Provider）
+  const getIconTypeFromProviderType = (providerType: string): string => {
+    const typeIconMap: Record<string, string> = {
+      openai: "openai",
+      anthropic: "claude",
+      gemini: "gemini",
+      "azure-openai": "openai",
+      vertexai: "gemini",
+      ollama: "ollama",
+    };
+    return typeIconMap[providerType.toLowerCase()] || "openai";
+  };
+
   const [poolOverview, setPoolOverview] = useState<ProviderPoolOverview[]>([]);
   const [apiKeyProviders, setApiKeyProviders] = useState<
     ProviderWithKeysDisplay[]
@@ -292,11 +305,12 @@ export function ApiServerPage() {
     });
 
     // 添加 API Key Provider 中有 API Key 的 Provider
+    // 使用 provider.id 作为 key，确保每个 Provider 单独显示
     apiKeyProviders.forEach((provider) => {
       const enabledKeys = provider.api_keys.filter((k) => k.enabled);
       if (enabledKeys.length > 0 && provider.enabled) {
-        // 将 API Key Provider 类型映射到统一的 ID
-        const id = mapApiKeyProviderToId(provider.type);
+        // 使用 provider.id 而不是 type 映射，确保自定义 Provider 单独显示
+        const id = provider.id;
         const existing = providerMap.get(id);
         if (existing) {
           existing.apiKeyCount = enabledKeys.length;
@@ -306,10 +320,15 @@ export function ApiServerPage() {
               ? "both"
               : "api_key";
         } else {
+          // 根据 provider.type 确定图标类型（优先使用 id 映射，否则使用 type 映射）
+          const iconType =
+            providerIconMap[id] ||
+            providerIconMap[provider.type] ||
+            getIconTypeFromProviderType(provider.type);
           providerMap.set(id, {
             id,
             label: providerLabels[id] || provider.name,
-            iconType: providerIconMap[id] || "openai",
+            iconType,
             source: "api_key",
             oauthCount: 0,
             apiKeyCount: enabledKeys.length,
@@ -803,7 +822,15 @@ export function ApiServerPage() {
               ).filter((cred) => !cred.is_disabled);
 
               // 获取 API Key 凭证 - 查找所有映射到当前 defaultProvider 的 API Key Provider
+              // 支持两种匹配方式：
+              // 1. 通过 provider.id 直接匹配（用于自定义 Provider）
+              // 2. 通过 type 映射匹配（用于内置 Provider）
               const matchingApiKeyProviders = apiKeyProviders.filter((p) => {
+                // 首先尝试直接通过 id 匹配
+                if (p.id === defaultProvider && p.enabled) {
+                  return true;
+                }
+                // 然后尝试通过 type 映射匹配
                 const mappedId = mapApiKeyProviderToId(p.type);
                 return mappedId === defaultProvider && p.enabled;
               });

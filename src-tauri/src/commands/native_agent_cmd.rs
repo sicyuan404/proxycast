@@ -6,6 +6,8 @@ use crate::agent::{
     AgentSession, ImageData, NativeAgentState, NativeChatRequest, NativeChatResponse, ProviderType,
     StreamEvent, ToolLoopEngine,
 };
+use crate::database::dao::api_key_provider::ApiKeyProviderDao;
+use crate::database::DbConnection;
 use crate::AppState;
 use serde::{Deserialize, Serialize};
 use tauri::{Emitter, State};
@@ -24,13 +26,14 @@ pub async fn native_agent_init(
 ) -> Result<NativeAgentStatus, String> {
     tracing::info!("[NativeAgent] 初始化 Agent");
 
-    let (port, api_key, running, default_provider) = {
+    let (port, api_key, running, default_provider, agent_config) = {
         let state = app_state.read().await;
         (
             state.config.server.port,
             state.running_api_key.clone(),
             state.running,
             state.config.routing.default_provider.clone(),
+            state.config.agent.clone(),
         )
     };
 
@@ -44,12 +47,20 @@ pub async fn native_agent_init(
     let provider_type = ProviderType::from_str(&default_provider);
 
     tracing::info!(
-        "[NativeAgent] 初始化 Agent: base_url={}, provider={:?}",
+        "[NativeAgent] 初始化 Agent: base_url={}, provider={:?}, use_default_prompt={}",
         base_url,
-        provider_type
+        provider_type,
+        agent_config.use_default_system_prompt
     );
 
-    agent_state.init(base_url.clone(), api_key, provider_type)?;
+    // 使用带配置的初始化方法
+    agent_state.init_with_config(
+        base_url.clone(),
+        api_key,
+        provider_type,
+        Some(default_provider),
+        &agent_config,
+    )?;
 
     tracing::info!("[NativeAgent] Agent 初始化成功: {}", base_url);
 
@@ -115,7 +126,7 @@ pub async fn native_agent_chat(
         let api_key = api_key.ok_or_else(|| "未配置 API Key".to_string())?;
         let base_url = format!("http://127.0.0.1:{}", port);
         let provider_type = ProviderType::from_str(&default_provider);
-        agent_state.init(base_url, api_key, provider_type)?;
+        agent_state.init(base_url, api_key, provider_type, Some(default_provider))?;
     }
 
     let request = NativeChatRequest {
@@ -142,6 +153,7 @@ pub async fn native_agent_chat_stream(
     app_handle: tauri::AppHandle,
     agent_state: State<'_, NativeAgentState>,
     app_state: State<'_, AppState>,
+    db: State<'_, DbConnection>,
     message: String,
     event_name: String,
     session_id: Option<String>,
@@ -177,7 +189,25 @@ pub async fn native_agent_chat_stream(
 
     // 使用前端传递的 provider，如果没有则使用默认值
     let provider_str = provider.unwrap_or(default_provider);
-    let provider_type = ProviderType::from_str(&provider_str);
+
+    // 尝试从数据库查询 Provider 的类型（用于确定协议）
+    let provider_type = {
+        let conn = db.lock().map_err(|e| format!("数据库锁定失败: {}", e))?;
+        if let Ok(Some(api_provider)) = ApiKeyProviderDao::get_provider_by_id(&conn, &provider_str)
+        {
+            // 根据 API Key Provider 的 type 确定协议
+            let api_type = api_provider.provider_type.to_string();
+            tracing::info!(
+                "[NativeAgent] 从数据库获取 Provider 类型: {} -> {}",
+                provider_str,
+                api_type
+            );
+            ProviderType::from_str(&api_type)
+        } else {
+            // 数据库中没有找到，使用默认解析
+            ProviderType::from_str(&provider_str)
+        }
+    };
 
     tracing::info!(
         "[NativeAgent] 使用 provider: {:?} (原始值: {})",
@@ -186,15 +216,16 @@ pub async fn native_agent_chat_stream(
     );
 
     // 如果 Agent 未初始化，或者 provider 发生变化，重新初始化
+    // 使用 provider_str 而不是 provider_type 来判断，因为自定义 Provider 的 type 都是 OpenAI
     let need_reinit = if !agent_state.is_initialized() {
         tracing::info!("[NativeAgent] Agent 未初始化，需要初始化");
         true
-    } else if let Some(current_provider) = agent_state.get_provider_type() {
-        if current_provider != provider_type {
+    } else if let Some(current_provider_id) = agent_state.get_provider_id() {
+        if current_provider_id != provider_str {
             tracing::info!(
-                "[NativeAgent] Provider 发生变化: {:?} -> {:?}，需要重新初始化",
-                current_provider,
-                provider_type
+                "[NativeAgent] Provider 发生变化: {} -> {}，需要重新初始化",
+                current_provider_id,
+                provider_str
             );
             true
         } else {
@@ -206,7 +237,7 @@ pub async fn native_agent_chat_stream(
 
     if need_reinit {
         let base_url = format!("http://127.0.0.1:{}", port);
-        agent_state.init(base_url, api_key, provider_type)?;
+        agent_state.init(base_url, api_key, provider_type, Some(provider_str.clone()))?;
     }
 
     // 获取工具注册表（用于创建 ToolLoopEngine）

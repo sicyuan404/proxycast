@@ -204,6 +204,8 @@ export {
   Sparkles,
   Cookie,
   FileJson,
+  Code,
+  Bot,
 } from "lucide-react";
 
 // ============================================================================

@@ -223,7 +223,18 @@ impl ProviderPoolService {
         provider_type: &str,
         model: Option<&str>,
     ) -> Result<Option<ProviderCredential>, String> {
-        let pt: PoolProviderType = provider_type.parse().map_err(|e: String| e)?;
+        // 对于未知的 provider_type，直接返回 None（不是错误）
+        // 这样可以让 select_credential_with_fallback 继续尝试智能降级
+        let pt: PoolProviderType = match provider_type.parse() {
+            Ok(pt) => pt,
+            Err(_) => {
+                eprintln!(
+                    "[SELECT_CREDENTIAL] 未知的 provider_type '{}', 返回 None 以便智能降级",
+                    provider_type
+                );
+                return Ok(None);
+            }
+        };
         let conn = db.lock().map_err(|e| e.to_string())?;
 
         // 获取凭证，对于 Anthropic 类型，也查找 Claude 类型的凭证
@@ -340,34 +351,42 @@ impl ProviderPoolService {
         model: Option<&str>,
         provider_id_hint: Option<&str>,
     ) -> Result<Option<ProviderCredential>, String> {
+        eprintln!(
+            "[select_credential_with_fallback] 开始: provider_type={}, model={:?}, provider_id_hint={:?}",
+            provider_type, model, provider_id_hint
+        );
+
         // Step 1: 尝试从 Provider Pool 选择 (OAuth + API Key)
         if let Some(cred) = self.select_credential(db, provider_type, model)? {
-            tracing::debug!(
-                "[凭证选择] 从 Provider Pool 找到 '{}' 凭证: {:?}",
-                provider_type,
+            eprintln!(
+                "[select_credential_with_fallback] 从 Provider Pool 找到凭证: {:?}",
+                cred.name
+            );
+            return Ok(Some(cred));
+        }
+        eprintln!("[select_credential_with_fallback] Provider Pool 未找到凭证，尝试智能降级");
+
+        // Step 2: 智能降级到 API Key Provider
+        let pt: PoolProviderType = provider_type.parse().unwrap_or(PoolProviderType::OpenAI);
+        eprintln!(
+            "[select_credential_with_fallback] 解析 provider_type '{}' -> {:?}",
+            provider_type, pt
+        );
+
+        // 传入 provider_id_hint 支持 60+ Provider
+        eprintln!("[select_credential_with_fallback] 调用 get_fallback_credential");
+        if let Some(cred) = api_key_service.get_fallback_credential(db, &pt, provider_id_hint)? {
+            eprintln!(
+                "[select_credential_with_fallback] 智能降级成功: {:?}",
                 cred.name
             );
             return Ok(Some(cred));
         }
 
-        // Step 2: 智能降级到 API Key Provider
-        let pt: PoolProviderType = provider_type.parse().unwrap_or(PoolProviderType::OpenAI);
-
-        // 传入 provider_id_hint 支持 60+ Provider
-        if let Some(cred) = api_key_service.get_fallback_credential(db, &pt, provider_id_hint)? {
-            tracing::info!(
-                "[智能降级] Provider Pool 无 '{}' 凭证，使用 API Key Provider 降级 (provider_id: {:?})",
-                provider_type,
-                provider_id_hint
-            );
-            return Ok(Some(cred));
-        }
-
         // Step 3: 都没有找到
-        tracing::warn!(
-            "[凭证选择] 未找到 '{}' 的任何可用凭证 (provider_id_hint: {:?})",
-            provider_type,
-            provider_id_hint
+        eprintln!(
+            "[select_credential_with_fallback] 未找到任何凭证 for provider_type='{}'",
+            provider_type
         );
         Ok(None)
     }

@@ -316,6 +316,8 @@ impl ApiKeyProviderService {
     // ==================== API Key 操作 ====================
 
     /// 添加 API Key
+    ///
+    /// 当添加第一个 API Key 时，会自动启用 Provider
     pub fn add_api_key(
         &self,
         db: &DbConnection,
@@ -325,9 +327,14 @@ impl ApiKeyProviderService {
     ) -> Result<ApiKeyEntry, String> {
         // 验证 Provider 存在
         let conn = db.lock().map_err(|e| e.to_string())?;
-        let _ = ApiKeyProviderDao::get_provider_by_id(&conn, provider_id)
+        let provider = ApiKeyProviderDao::get_provider_by_id(&conn, provider_id)
             .map_err(|e| e.to_string())?
             .ok_or_else(|| format!("Provider not found: {}", provider_id))?;
+
+        // 检查是否是第一个 API Key，如果是则自动启用 Provider
+        let existing_keys = ApiKeyProviderDao::get_api_keys_by_provider(&conn, provider_id)
+            .map_err(|e| e.to_string())?;
+        let should_enable_provider = existing_keys.is_empty() && !provider.enabled;
 
         // 加密 API Key
         let encrypted_key = self.encryption.encrypt(api_key);
@@ -346,6 +353,19 @@ impl ApiKeyProviderService {
         };
 
         ApiKeyProviderDao::insert_api_key(&conn, &key).map_err(|e| e.to_string())?;
+
+        // 如果是第一个 API Key，自动启用 Provider
+        if should_enable_provider {
+            let mut updated_provider = provider;
+            updated_provider.enabled = true;
+            updated_provider.updated_at = now;
+            ApiKeyProviderDao::update_provider(&conn, &updated_provider)
+                .map_err(|e| e.to_string())?;
+            tracing::info!(
+                "[ApiKeyProviderService] 自动启用 Provider: {} (添加了第一个 API Key)",
+                provider_id
+            );
+        }
 
         Ok(key)
     }
@@ -696,26 +716,49 @@ impl ApiKeyProviderService {
         pool_type: &PoolProviderType,
         provider_id_hint: Option<&str>,
     ) -> Result<Option<ProviderCredential>, String> {
-        // 策略 1: 通过类型映射查找
-        if let Some(api_type) = self.map_pool_type_to_api_type(pool_type) {
-            tracing::debug!("[智能降级] 尝试类型映射: {:?} -> {:?}", pool_type, api_type);
-            if let Some(cred) = self.find_by_api_type(db, pool_type, &api_type)? {
-                return Ok(Some(cred));
-            }
-        }
+        eprintln!(
+            "[get_fallback_credential] 开始查找: pool_type={:?}, provider_id_hint={:?}",
+            pool_type, provider_id_hint
+        );
 
-        // 策略 2: 通过 provider_id 直接查找 (支持 60+ Provider)
+        // 策略 1: 优先通过 provider_id 直接查找 (支持 deepseek, moonshot 等 60+ Provider)
+        // 这些 Provider 在 API Key Provider 中有独立配置，应该优先使用
         if let Some(provider_id) = provider_id_hint {
-            tracing::debug!("[智能降级] 尝试 provider_id 查找: {}", provider_id);
+            eprintln!(
+                "[get_fallback_credential] 尝试按 provider_id '{}' 查找",
+                provider_id
+            );
             if let Some(cred) = self.find_by_provider_id(db, provider_id)? {
+                eprintln!(
+                    "[get_fallback_credential] 通过 provider_id '{}' 找到凭证: {:?}",
+                    provider_id, cred.name
+                );
+                return Ok(Some(cred));
+            }
+            eprintln!(
+                "[get_fallback_credential] provider_id '{}' 未找到凭证",
+                provider_id
+            );
+        }
+
+        // 策略 2: 通过类型映射查找（降级方案）
+        if let Some(api_type) = self.map_pool_type_to_api_type(pool_type) {
+            eprintln!(
+                "[get_fallback_credential] 尝试类型映射: {:?} -> {:?}",
+                pool_type, api_type
+            );
+            if let Some(cred) = self.find_by_api_type(db, pool_type, &api_type)? {
+                eprintln!(
+                    "[get_fallback_credential] 通过类型映射找到凭证: {:?}",
+                    cred.name
+                );
                 return Ok(Some(cred));
             }
         }
 
-        tracing::debug!(
-            "[智能降级] 未找到 {:?} 的降级凭证 (provider_id_hint: {:?})",
-            pool_type,
-            provider_id_hint
+        eprintln!(
+            "[get_fallback_credential] 未找到 {:?} 的降级凭证 (provider_id_hint: {:?})",
+            pool_type, provider_id_hint
         );
         Ok(None)
     }
@@ -831,8 +874,24 @@ impl ApiKeyProviderService {
             ApiKeyProviderDao::get_provider_by_id(&conn, provider_id).map_err(|e| e.to_string())?;
 
         let provider = match provider {
-            Some(p) if p.enabled => p,
-            _ => return Ok(None),
+            Some(p) if p.enabled => {
+                eprintln!(
+                    "[find_by_provider_id] 找到已启用的 provider: id={}, name={}, api_host={}",
+                    p.id, p.name, p.api_host
+                );
+                p
+            }
+            Some(_p) => {
+                eprintln!(
+                    "[find_by_provider_id] provider '{}' 存在但未启用",
+                    provider_id
+                );
+                return Ok(None);
+            }
+            None => {
+                eprintln!("[find_by_provider_id] provider '{}' 不存在", provider_id);
+                return Ok(None);
+            }
         };
 
         // 获取启用的 API Key
@@ -840,8 +899,18 @@ impl ApiKeyProviderService {
             .map_err(|e| e.to_string())?;
 
         if keys.is_empty() {
+            eprintln!(
+                "[find_by_provider_id] provider '{}' 没有启用的 API Key",
+                provider_id
+            );
             return Ok(None);
         }
+
+        eprintln!(
+            "[find_by_provider_id] provider '{}' 有 {} 个启用的 API Key",
+            provider_id,
+            keys.len()
+        );
 
         // 轮询选择 API Key
         let index = {

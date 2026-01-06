@@ -22,9 +22,9 @@ pub use types::{
     generate_secure_api_key, AmpConfig, AmpModelMapping, ApiKeyEntry, Config, CredentialEntry,
     CredentialPoolConfig, CustomProviderConfig, EndpointProvidersConfig, GeminiApiKeyEntry,
     IFlowCredentialEntry, InjectionRuleConfig, InjectionSettings, LoggingConfig, ModelInfo,
-    ModelsConfig, ProviderConfig, ProviderModelsConfig, ProvidersConfig, QuotaExceededConfig,
-    RemoteManagementConfig, RetrySettings, RoutingConfig, RoutingRuleConfig, ServerConfig,
-    TlsConfig, VertexApiKeyEntry, VertexModelAlias, DEFAULT_API_KEY,
+    ModelsConfig, NativeAgentConfig, ProviderConfig, ProviderModelsConfig, ProvidersConfig,
+    QuotaExceededConfig, RemoteManagementConfig, RetrySettings, RoutingConfig, RoutingRuleConfig,
+    ServerConfig, TlsConfig, VertexApiKeyEntry, VertexModelAlias, DEFAULT_API_KEY,
 };
 pub use yaml::{load_config, save_config, ConfigError, ConfigManager, YamlService};
 

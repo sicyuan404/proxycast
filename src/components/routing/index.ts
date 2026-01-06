@@ -1,4 +1,3 @@
-export { ModelMapping } from "./ModelMapping";
 export { RoutingRules } from "./RoutingRules";
 export { ExclusionList } from "./ExclusionList";
 export { InjectionRules } from "./InjectionRules";

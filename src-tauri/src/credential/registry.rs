@@ -754,13 +754,56 @@ impl CredentialProviderRegistry {
 
     /// 检查插件更新
     pub async fn check_updates(&self) -> OAuthPluginResult<Vec<PluginUpdate>> {
-        // TODO: 实现更新检查逻辑
-        // 1. 遍历所有插件
-        // 2. 检查 GitHub Release 或其他来源
-        // 3. 比较版本号
-        // 4. 返回有更新的插件列表
+        // 已知插件的最新版本（与前端 OAuthPluginTab.tsx 保持同步）
+        let latest_versions: std::collections::HashMap<&str, &str> = [
+            ("kiro-provider", "0.3.0"),
+            ("antigravity-provider", "0.4.0"),
+            ("claude-provider", "0.3.0"),
+            ("droid-provider", "0.3.0"),
+            ("gemini-provider", "0.4.0"),
+            ("codex-provider", "0.1.0"),
+        ]
+        .into_iter()
+        .collect();
 
-        Ok(vec![])
+        let mut updates = Vec::new();
+
+        // 扫描已安装的插件
+        if let Ok(entries) = std::fs::read_dir(&self.plugins_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    let plugin_json = path.join("plugin.json");
+                    if plugin_json.exists() {
+                        if let Ok(content) = std::fs::read_to_string(&plugin_json) {
+                            if let Ok(manifest) =
+                                serde_json::from_str::<serde_json::Value>(&content)
+                            {
+                                let plugin_id = manifest["name"].as_str().unwrap_or_default();
+                                let current_version =
+                                    manifest["version"].as_str().unwrap_or("0.0.0");
+
+                                // 检查是否有更新
+                                if let Some(&latest) = latest_versions.get(plugin_id) {
+                                    if version_compare(current_version, latest)
+                                        == std::cmp::Ordering::Less
+                                    {
+                                        updates.push(PluginUpdate {
+                                            plugin_id: plugin_id.to_string(),
+                                            current_version: current_version.to_string(),
+                                            latest_version: latest.to_string(),
+                                            changelog: None,
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(updates)
     }
 
     // ========================================================================
@@ -807,6 +850,29 @@ pub fn init_global_registry(plugins_dir: PathBuf) -> Arc<CredentialProviderRegis
 /// 获取全局注册表
 pub fn get_global_registry() -> Option<Arc<CredentialProviderRegistry>> {
     GLOBAL_REGISTRY.get().cloned()
+}
+
+/// 比较语义化版本号
+fn version_compare(v1: &str, v2: &str) -> std::cmp::Ordering {
+    let parse = |v: &str| -> Vec<u32> {
+        v.trim_start_matches('v')
+            .split('.')
+            .filter_map(|s| s.parse().ok())
+            .collect()
+    };
+
+    let v1_parts = parse(v1);
+    let v2_parts = parse(v2);
+
+    for i in 0..std::cmp::max(v1_parts.len(), v2_parts.len()) {
+        let p1 = v1_parts.get(i).copied().unwrap_or(0);
+        let p2 = v2_parts.get(i).copied().unwrap_or(0);
+        match p1.cmp(&p2) {
+            std::cmp::Ordering::Equal => continue,
+            other => return other,
+        }
+    }
+    std::cmp::Ordering::Equal
 }
 
 /// 递归复制目录

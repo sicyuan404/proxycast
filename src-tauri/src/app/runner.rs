@@ -687,9 +687,6 @@ pub fn run() {
             commands::route_cmd::get_available_routes,
             commands::route_cmd::get_route_curl_examples,
             // Router config commands
-            commands::router_cmd::get_model_aliases,
-            commands::router_cmd::add_model_alias,
-            commands::router_cmd::remove_model_alias,
             commands::router_cmd::get_routing_rules,
             commands::router_cmd::add_routing_rule,
             commands::router_cmd::remove_routing_rule,
@@ -698,8 +695,6 @@ pub fn run() {
             commands::router_cmd::add_exclusion,
             commands::router_cmd::remove_exclusion,
             commands::router_cmd::set_router_default_provider,
-            commands::router_cmd::get_recommended_presets,
-            commands::router_cmd::apply_recommended_preset,
             commands::router_cmd::clear_all_routing_config,
             // Resilience config commands
             commands::resilience_cmd::get_retry_config,

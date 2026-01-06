@@ -925,9 +925,18 @@ pub async fn plugin_config_set(
 pub async fn read_plugin_ui_file(path: String) -> Result<String, String> {
     use std::fs;
 
-    // 安全检查：确保路径在插件目录内
-    let path = std::path::PathBuf::from(&path);
+    // 展开 ~ 为用户主目录
+    let expanded_path = if path.starts_with("~/") {
+        if let Some(home) = dirs::home_dir() {
+            home.join(&path[2..])
+        } else {
+            std::path::PathBuf::from(&path)
+        }
+    } else {
+        std::path::PathBuf::from(&path)
+    };
 
     // 读取文件内容
-    fs::read_to_string(&path).map_err(|e| format!("读取插件 UI 文件失败: {}", e))
+    fs::read_to_string(&expanded_path)
+        .map_err(|e| format!("读取插件 UI 文件失败: {} (路径: {:?})", e, expanded_path))
 }

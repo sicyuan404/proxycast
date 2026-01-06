@@ -1,60 +1,49 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Cpu, RefreshCw, Copy, Check, Search } from "lucide-react";
 import { getAvailableModels, ModelInfo } from "@/hooks/useTauri";
 
-// 模型分组配置
-const MODEL_GROUPS: Record<
-  string,
-  { name: string; color: string; models: string[] }
-> = {
-  kiro: {
-    name: "Kiro Claude",
-    color: "bg-purple-100 text-purple-700",
-    models: [
-      "claude-sonnet-4-5",
-      "claude-sonnet-4-5-20250514",
-      "claude-sonnet-4-5-20250929",
-      "claude-3-7-sonnet-20250219",
-      "claude-3-5-sonnet-latest",
-      "claude-3-5-sonnet-20241022",
-      "claude-opus-4-5-20250514",
-      "claude-haiku-4-5-20250514",
-    ],
+// 根据 provider_id 获取分组配置
+const PROVIDER_GROUPS: Record<string, { name: string; color: string }> = {
+  anthropic: {
+    name: "Anthropic",
+    color:
+      "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300",
   },
-  gemini: {
-    name: "Gemini CLI",
-    color: "bg-blue-100 text-blue-700",
-    models: [
-      "gemini-2.5-flash",
-      "gemini-2.5-flash-lite",
-      "gemini-2.5-pro",
-      "gemini-2.5-pro-preview-06-05",
-      "gemini-3-pro-preview",
-      "gemini-2.0-flash-exp",
-    ],
-  },
-  qwen: {
-    name: "通义千问",
-    color: "bg-orange-100 text-orange-700",
-    models: [
-      "qwen3-coder-plus",
-      "qwen3-coder-flash",
-      "qwen-coder-plus",
-      "qwen-coder-turbo",
-    ],
+  google: {
+    name: "Google",
+    color: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
   },
   openai: {
     name: "OpenAI",
-    color: "bg-green-100 text-green-700",
-    models: [
-      "gpt-4o",
-      "gpt-4o-mini",
-      "gpt-4-turbo",
-      "gpt-4",
-      "gpt-3.5-turbo",
-      "o1-preview",
-      "o1-mini",
-    ],
+    color:
+      "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300",
+  },
+  dashscope: {
+    name: "阿里云",
+    color:
+      "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300",
+  },
+  deepseek: {
+    name: "DeepSeek",
+    color: "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300",
+  },
+  zhipu: {
+    name: "智谱",
+    color:
+      "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300",
+  },
+  moonshot: {
+    name: "月之暗面",
+    color:
+      "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300",
+  },
+  mistral: {
+    name: "Mistral",
+    color: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300",
+  },
+  cohere: {
+    name: "Cohere",
+    color: "bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-300",
   },
 };
 
@@ -64,7 +53,7 @@ export function ModelsTab() {
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
+  const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
 
   useEffect(() => {
     fetchModels();
@@ -91,61 +80,59 @@ export function ModelsTab() {
     setTimeout(() => setCopied(null), 2000);
   };
 
-  const getModelGroup = (modelId: string): string | null => {
-    for (const [groupId, group] of Object.entries(MODEL_GROUPS)) {
-      if (
-        group.models.some((m) =>
-          modelId.toLowerCase().includes(m.toLowerCase().split("-")[0]),
-        )
-      ) {
-        return groupId;
-      }
+  const getProviderBadge = (providerId: string) => {
+    const config = PROVIDER_GROUPS[providerId];
+    if (!config) {
+      return (
+        <span className="rounded px-2 py-0.5 text-xs font-medium bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300">
+          {providerId}
+        </span>
+      );
     }
-    // 根据 owned_by 判断
-    const model = models.find((m) => m.id === modelId);
-    if (model?.owned_by === "anthropic") return "kiro";
-    if (model?.owned_by === "google") return "gemini";
-    if (model?.owned_by === "alibaba") return "qwen";
-    if (model?.owned_by === "openai") return "openai";
-    return null;
-  };
-
-  const getGroupBadge = (groupId: string | null) => {
-    if (!groupId || !MODEL_GROUPS[groupId]) return null;
-    const group = MODEL_GROUPS[groupId];
     return (
       <span
-        className={`rounded px-2 py-0.5 text-xs font-medium ${group.color}`}
+        className={`rounded px-2 py-0.5 text-xs font-medium ${config.color}`}
       >
-        {group.name}
+        {config.name}
       </span>
     );
   };
 
-  // 过滤模型
-  const filteredModels = models.filter((model) => {
-    const matchesSearch = model.id.toLowerCase().includes(search.toLowerCase());
-    const matchesGroup =
-      !selectedGroup || getModelGroup(model.id) === selectedGroup;
-    return matchesSearch && matchesGroup;
-  });
-
   // 按 provider 分组统计
-  const groupCounts = models.reduce(
-    (acc, model) => {
-      const group = getModelGroup(model.id);
-      if (group) {
-        acc[group] = (acc[group] || 0) + 1;
-      }
-      return acc;
-    },
-    {} as Record<string, number>,
-  );
+  const providerCounts = useMemo(() => {
+    return models.reduce(
+      (acc, model) => {
+        const provider = model.owned_by;
+        acc[provider] = (acc[provider] || 0) + 1;
+        return acc;
+      },
+      {} as Record<string, number>,
+    );
+  }, [models]);
+
+  // 获取所有 provider 列表（按数量排序）
+  const providers = useMemo(() => {
+    return Object.entries(providerCounts)
+      .sort((a, b) => b[1] - a[1])
+      .map(([id]) => id);
+  }, [providerCounts]);
+
+  // 过滤模型
+  const filteredModels = useMemo(() => {
+    return models.filter((model) => {
+      const matchesSearch = model.id
+        .toLowerCase()
+        .includes(search.toLowerCase());
+      const matchesProvider =
+        !selectedProvider || model.owned_by === selectedProvider;
+      return matchesSearch && matchesProvider;
+    });
+  }, [models, search, selectedProvider]);
 
   return (
     <div className="space-y-6">
       {error && (
-        <div className="rounded-lg border border-red-500 bg-red-50 p-4 text-red-700">
+        <div className="rounded-lg border border-red-500 bg-red-50 p-4 text-red-700 dark:bg-red-950/30">
           {error}
         </div>
       )}
@@ -175,31 +162,33 @@ export function ModelsTab() {
       {/* Provider 过滤标签 */}
       <div className="flex flex-wrap gap-2">
         <button
-          onClick={() => setSelectedGroup(null)}
+          onClick={() => setSelectedProvider(null)}
           className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
-            !selectedGroup
+            !selectedProvider
               ? "bg-primary text-primary-foreground"
               : "bg-muted hover:bg-muted/80"
           }`}
         >
           全部 ({models.length})
         </button>
-        {Object.entries(MODEL_GROUPS).map(([groupId, group]) => {
-          const count = groupCounts[groupId] || 0;
-          if (count === 0) return null;
+        {providers.map((providerId) => {
+          const count = providerCounts[providerId] || 0;
+          const config = PROVIDER_GROUPS[providerId];
           return (
             <button
-              key={groupId}
+              key={providerId}
               onClick={() =>
-                setSelectedGroup(selectedGroup === groupId ? null : groupId)
+                setSelectedProvider(
+                  selectedProvider === providerId ? null : providerId,
+                )
               }
               className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
-                selectedGroup === groupId
+                selectedProvider === providerId
                   ? "bg-primary text-primary-foreground"
                   : "bg-muted hover:bg-muted/80"
               }`}
             >
-              {group.name} ({count})
+              {config?.name || providerId} ({count})
             </button>
           );
         })}
@@ -237,7 +226,7 @@ export function ModelsTab() {
                   <div>
                     <div className="flex items-center gap-2">
                       <code className="font-medium">{model.id}</code>
-                      {getGroupBadge(getModelGroup(model.id))}
+                      {getProviderBadge(model.owned_by)}
                     </div>
                     <p className="text-xs text-muted-foreground">
                       {model.owned_by}

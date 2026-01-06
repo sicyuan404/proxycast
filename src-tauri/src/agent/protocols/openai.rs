@@ -176,6 +176,52 @@ impl OpenAIProtocol {
                     );
                     buffer.push_str(&text);
 
+                    // 检查是否是非流式响应（直接返回完整 JSON）
+                    // 非流式响应以 { 开头，不是 SSE 格式
+                    if buffer.trim().starts_with('{') && !buffer.contains("data: ") {
+                        // 尝试解析为完整的 ChatCompletionResponse
+                        if let Ok(response) = serde_json::from_str::<
+                            crate::models::openai::ChatCompletionResponse,
+                        >(&buffer)
+                        {
+                            eprintln!("[OpenAIProtocol] 检测到非流式响应，直接解析");
+
+                            let content = response
+                                .choices
+                                .first()
+                                .and_then(|c| c.message.content.clone())
+                                .unwrap_or_default();
+
+                            // 发送完整内容作为 TextDelta
+                            if !content.is_empty() {
+                                let _ = tx
+                                    .send(StreamEvent::TextDelta {
+                                        text: content.clone(),
+                                    })
+                                    .await;
+                            }
+
+                            let usage = Some(crate::agent::types::TokenUsage {
+                                input_tokens: response.usage.prompt_tokens,
+                                output_tokens: response.usage.completion_tokens,
+                            });
+
+                            if send_done {
+                                let _ = tx
+                                    .send(StreamEvent::Done {
+                                        usage: usage.clone(),
+                                    })
+                                    .await;
+                            }
+
+                            return Ok(StreamResult {
+                                content,
+                                tool_calls: None,
+                                usage,
+                            });
+                        }
+                    }
+
                     // 处理完整的 SSE 事件（以 \n\n 分隔）
                     while let Some(pos) = buffer.find("\n\n") {
                         let event = buffer[..pos].to_string();
@@ -233,6 +279,48 @@ impl OpenAIProtocol {
         }
 
         // 流正常结束但没有收到 [DONE]
+        // 检查 buffer 中是否还有未处理的非流式响应
+        if !buffer.trim().is_empty() && buffer.trim().starts_with('{') {
+            if let Ok(response) =
+                serde_json::from_str::<crate::models::openai::ChatCompletionResponse>(&buffer)
+            {
+                eprintln!("[OpenAIProtocol] 流结束时检测到非流式响应");
+
+                let content = response
+                    .choices
+                    .first()
+                    .and_then(|c| c.message.content.clone())
+                    .unwrap_or_default();
+
+                if !content.is_empty() {
+                    let _ = tx
+                        .send(StreamEvent::TextDelta {
+                            text: content.clone(),
+                        })
+                        .await;
+                }
+
+                let usage = Some(crate::agent::types::TokenUsage {
+                    input_tokens: response.usage.prompt_tokens,
+                    output_tokens: response.usage.completion_tokens,
+                });
+
+                if send_done {
+                    let _ = tx
+                        .send(StreamEvent::Done {
+                            usage: usage.clone(),
+                        })
+                        .await;
+                }
+
+                return Ok(StreamResult {
+                    content,
+                    tool_calls: None,
+                    usage,
+                });
+            }
+        }
+
         let full_content = parser.get_full_content();
         let tool_calls = if parser.has_tool_calls() {
             Some(parser.finalize_tool_calls())

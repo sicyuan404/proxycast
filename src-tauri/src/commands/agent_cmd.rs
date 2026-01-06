@@ -52,7 +52,12 @@ pub async fn agent_start_process(
     let base_url = format!("http://127.0.0.1:{}", port);
     let provider_type = ProviderType::from_str(&default_provider);
 
-    agent_state.init(base_url.clone(), api_key, provider_type)?;
+    agent_state.init(
+        base_url.clone(),
+        api_key,
+        provider_type,
+        Some(default_provider),
+    )?;
 
     Ok(AgentProcessStatus {
         running: true,
@@ -137,7 +142,7 @@ pub async fn agent_create_session(
         let api_key = api_key.ok_or_else(|| "未配置 API Key".to_string())?;
         let base_url = format!("http://127.0.0.1:{}", port);
         let provider_type = ProviderType::from_str(&default_provider);
-        agent_state.init(base_url, api_key, provider_type)?;
+        agent_state.init(base_url, api_key, provider_type, Some(default_provider))?;
     }
 
     // 构建包含 Skills 的 System Prompt
@@ -243,7 +248,7 @@ pub async fn agent_send_message(
         let api_key = api_key.ok_or_else(|| "未配置 API Key".to_string())?;
         let base_url = format!("http://127.0.0.1:{}", port);
         let provider_type = ProviderType::from_str(&default_provider);
-        agent_state.init(base_url, api_key, provider_type)?;
+        agent_state.init(base_url, api_key, provider_type, Some(default_provider))?;
     }
 
     // 根据启用的模式构建最终消息

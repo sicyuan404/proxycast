@@ -2,7 +2,7 @@
 //!
 //! 包含配置读取、保存、Provider 设置等命令。
 
-use crate::app::types::{AppState, LogState, ProviderType};
+use crate::app::types::{AppState, LogState};
 use crate::config;
 
 /// 获取配置
@@ -51,8 +51,8 @@ pub async fn set_default_provider(
     logs: tauri::State<'_, LogState>,
     provider: String,
 ) -> Result<String, String> {
-    // 使用枚举验证 provider
-    let provider_type: ProviderType = provider.parse().map_err(|e: String| e)?;
+    // 允许任意 Provider ID（包括自定义 Provider 的 UUID）
+    // 不再强制验证为已知的 ProviderType
 
     let mut s = state.write().await;
     s.config.default_provider = provider.clone();
@@ -66,7 +66,7 @@ pub async fn set_default_provider(
     config::save_config(&s.config).map_err(|e| e.to_string())?;
     logs.write()
         .await
-        .add("info", &format!("默认 Provider 已切换为: {provider_type}"));
+        .add("info", &format!("默认 Provider 已切换为: {provider}"));
     Ok(provider)
 }
 
@@ -95,12 +95,8 @@ pub async fn set_endpoint_provider(
     endpoint: String,
     provider: Option<String>,
 ) -> Result<String, String> {
-    // 验证 provider（如果提供）
-    if let Some(ref p) = provider {
-        if !p.is_empty() {
-            let _: ProviderType = p.parse().map_err(|e: String| e)?;
-        }
-    }
+    // 允许任意 Provider ID（包括自定义 Provider 的 UUID）
+    // 不再强制验证为已知的 ProviderType
 
     let mut s = state.write().await;
 

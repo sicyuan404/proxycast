@@ -34,7 +34,7 @@ pub async fn refresh_model_registry(state: State<'_, ModelRegistryState>) -> Res
         .as_ref()
         .ok_or_else(|| "模型注册服务未初始化".to_string())?;
 
-    service.refresh_from_models_dev().await
+    service.refresh_from_repo().await
 }
 
 /// 搜索模型

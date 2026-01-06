@@ -44,6 +44,8 @@ pub struct NativeAgent {
     provider_type: ProviderType,
     /// 协议处理器
     protocol: Box<dyn Protocol>,
+    /// Provider ID，用于自定义 Provider 路由（如 "moonshot"）
+    provider_id: Option<String>,
 }
 
 impl NativeAgent {
@@ -51,6 +53,7 @@ impl NativeAgent {
         base_url: String,
         api_key: String,
         provider_type: ProviderType,
+        provider_id: Option<String>,
     ) -> Result<Self, String> {
         let client = Client::builder()
             .timeout(Duration::from_secs(300))
@@ -61,21 +64,27 @@ impl NativeAgent {
 
         let protocol = create_protocol(provider_type);
 
+        // 保存原始 base_url，provider_id 将在构建请求 URL 时使用
+        let effective_base_url = base_url.clone();
+
         info!(
-            "[NativeAgent] 创建 Agent: base_url={}, provider={:?}, protocol_endpoint={}",
+            "[NativeAgent] 创建 Agent: base_url={}, effective_base_url={}, provider={:?}, provider_id={:?}, protocol_endpoint={}",
             base_url,
+            effective_base_url,
             provider_type,
+            provider_id,
             protocol.endpoint()
         );
 
         Ok(Self {
             client,
-            base_url,
+            base_url: effective_base_url,
             api_key,
             sessions: Arc::new(RwLock::new(HashMap::new())),
             config: AgentConfig::default(),
             provider_type,
             protocol,
+            provider_id,
         })
     }
 
@@ -87,6 +96,57 @@ impl NativeAgent {
     pub fn with_system_prompt(mut self, prompt: String) -> Self {
         self.config.system_prompt = Some(prompt);
         self
+    }
+
+    /// 获取 API 请求的有效 base_url
+    ///
+    /// 对于自定义 Provider（如 moonshot），返回 `{base_url}/api/provider/{provider_id}`
+    /// 对于内置 Provider，返回原始 base_url
+    fn get_effective_base_url(&self) -> String {
+        if let Some(ref pid) = self.provider_id {
+            // 检查 provider_id 是否是已知的内置类型
+            let is_builtin = matches!(
+                pid.to_lowercase().as_str(),
+                "openai"
+                    | "claude"
+                    | "anthropic"
+                    | "gemini"
+                    | "kiro"
+                    | "qwen"
+                    | "codex"
+                    | "antigravity"
+                    | "iflow"
+            );
+            if is_builtin {
+                self.base_url.clone()
+            } else {
+                // 自定义 Provider，使用 provider 特定路由
+                // 例如：http://127.0.0.1:8999/api/provider/moonshot
+                format!("{}/api/provider/{}", self.base_url, pid)
+            }
+        } else {
+            self.base_url.clone()
+        }
+    }
+
+    /// 检查是否是自定义 Provider
+    fn is_custom_provider(&self) -> bool {
+        if let Some(ref pid) = self.provider_id {
+            !matches!(
+                pid.to_lowercase().as_str(),
+                "openai"
+                    | "claude"
+                    | "anthropic"
+                    | "gemini"
+                    | "kiro"
+                    | "qwen"
+                    | "codex"
+                    | "antigravity"
+                    | "iflow"
+            )
+        } else {
+            false
+        }
     }
 
     /// 发送聊天请求（非流式，用于简单场景）
@@ -126,7 +186,12 @@ impl NativeAgent {
             reasoning_effort: None,
         };
 
-        let url = format!("{}/v1/chat/completions", self.base_url);
+        // 对于自定义 Provider，使用 provider 特定路由
+        let url = if self.is_custom_provider() {
+            format!("{}/chat/completions", self.get_effective_base_url())
+        } else {
+            format!("{}/v1/chat/completions", self.base_url)
+        };
 
         let response = self
             .client
@@ -241,11 +306,13 @@ impl NativeAgent {
         };
 
         // 使用协议策略发送请求
+        // 对于自定义 Provider，使用 provider 特定路由
+        let effective_base_url = self.get_effective_base_url();
         let result = self
             .protocol
             .chat_stream(
                 &self.client,
-                &self.base_url,
+                &effective_base_url,
                 &self.api_key,
                 &history,
                 &request.message,
@@ -408,11 +475,13 @@ impl NativeAgent {
         };
 
         // 使用协议策略继续对话
+        // 对于自定义 Provider，使用 provider 特定路由
+        let effective_base_url = self.get_effective_base_url();
         let result = self
             .protocol
             .chat_stream_continue(
                 &self.client,
-                &self.base_url,
+                &effective_base_url,
                 &self.api_key,
                 &session.messages,
                 &model,
@@ -676,8 +745,45 @@ impl NativeAgentState {
         base_url: String,
         api_key: String,
         provider_type: ProviderType,
+        provider_id: Option<String>,
     ) -> Result<(), String> {
-        let agent = NativeAgent::new(base_url, api_key, provider_type)?;
+        let agent = NativeAgent::new(base_url, api_key, provider_type, provider_id)?;
+        *self.agent.write() = Some(agent);
+        Ok(())
+    }
+
+    /// 使用配置初始化 Agent
+    ///
+    /// 从 NativeAgentConfig 加载系统提示词等配置
+    pub fn init_with_config(
+        &self,
+        base_url: String,
+        api_key: String,
+        provider_type: ProviderType,
+        provider_id: Option<String>,
+        agent_config: &crate::config::NativeAgentConfig,
+    ) -> Result<(), String> {
+        let mut agent = NativeAgent::new(base_url, api_key, provider_type, provider_id)?;
+
+        // 从配置加载系统提示词
+        let system_prompt = agent_config.get_effective_system_prompt().or_else(|| {
+            // 如果配置启用了默认提示词，使用内置默认值
+            if agent_config.use_default_system_prompt {
+                Some(super::types::DEFAULT_SYSTEM_PROMPT.to_string())
+            } else {
+                None
+            }
+        });
+
+        if let Some(prompt) = system_prompt {
+            agent.config.system_prompt = Some(prompt);
+        }
+
+        // 从配置加载其他参数
+        agent.config.model = agent_config.default_model.clone();
+        agent.config.temperature = Some(agent_config.temperature);
+        agent.config.max_tokens = Some(agent_config.max_tokens);
+
         *self.agent.write() = Some(agent);
         Ok(())
     }
@@ -689,6 +795,14 @@ impl NativeAgentState {
     /// 获取当前 Agent 的 provider 类型
     pub fn get_provider_type(&self) -> Option<ProviderType> {
         self.agent.read().as_ref().map(|a| a.provider_type)
+    }
+
+    /// 获取当前 Agent 的 provider ID
+    pub fn get_provider_id(&self) -> Option<String> {
+        self.agent
+            .read()
+            .as_ref()
+            .and_then(|a| a.provider_id.clone())
     }
 
     pub fn reset(&self) {
@@ -724,6 +838,7 @@ impl NativeAgentState {
             config: agent.config.clone(),
             provider_type: agent.provider_type,
             protocol,
+            provider_id: agent.provider_id.clone(),
         })
     }
 

@@ -1,20 +1,89 @@
 //! 模型注册服务
 //!
-//! 负责从 models.dev API 获取模型数据、管理本地缓存、提供模型搜索等功能
+//! 负责从 aiclientproxy/models 仓库获取模型数据、管理本地缓存、提供模型搜索等功能
 
-use crate::data::get_local_models;
 use crate::database::DbConnection;
 use crate::models::model_registry::{
-    EnhancedModelMetadata, ModelSource, ModelStatus, ModelSyncState, ModelTier, ModelsDevProvider,
-    UserModelPreference,
+    EnhancedModelMetadata, ModelCapabilities, ModelLimits, ModelPricing, ModelSource, ModelStatus,
+    ModelSyncState, ModelTier, UserModelPreference,
 };
 use rusqlite::params;
-use std::collections::HashMap;
+use serde::Deserialize;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-const MODELS_DEV_API_URL: &str = "https://models.dev/api.json";
+/// GitHub 仓库 raw 文件基础 URL
+const MODELS_REPO_BASE_URL: &str = "https://raw.githubusercontent.com/aiclientproxy/models/main";
 const CACHE_DURATION_SECS: i64 = 3600; // 1 小时
+
+/// 仓库索引文件结构
+#[derive(Debug, Deserialize)]
+struct RepoIndex {
+    providers: Vec<String>,
+    #[allow(dead_code)]
+    total_models: u32,
+}
+
+/// 仓库中的 Provider 数据结构
+#[derive(Debug, Deserialize)]
+struct RepoProviderData {
+    provider: RepoProvider,
+    models: Vec<RepoModel>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RepoProvider {
+    id: String,
+    name: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct RepoModel {
+    id: String,
+    name: String,
+    family: Option<String>,
+    tier: Option<String>,
+    capabilities: Option<RepoCapabilities>,
+    pricing: Option<RepoPricing>,
+    limits: Option<RepoLimits>,
+    status: Option<String>,
+    release_date: Option<String>,
+    is_latest: Option<bool>,
+    description: Option<String>,
+    #[serde(default)]
+    description_zh: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct RepoCapabilities {
+    #[serde(default)]
+    vision: bool,
+    #[serde(default)]
+    tools: bool,
+    #[serde(default)]
+    streaming: bool,
+    #[serde(default)]
+    json_mode: bool,
+    #[serde(default)]
+    function_calling: bool,
+    #[serde(default)]
+    reasoning: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct RepoPricing {
+    input: Option<f64>,
+    output: Option<f64>,
+    cache_read: Option<f64>,
+    cache_write: Option<f64>,
+    currency: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RepoLimits {
+    context: Option<u32>,
+    max_output: Option<u32>,
+}
 
 /// 模型注册服务
 pub struct ModelRegistryService {
@@ -62,24 +131,7 @@ impl ModelRegistryService {
             }
         }
 
-        // 2. 使用本地硬编码数据作为初始数据
-        let local_models = get_local_models();
-        tracing::info!(
-            "[ModelRegistry] 使用 {} 个本地硬编码模型作为初始数据",
-            local_models.len()
-        );
-
-        {
-            let mut cache = self.models_cache.write().await;
-            *cache = local_models.clone();
-        }
-
-        // 保存到数据库
-        if let Err(e) = self.save_models_to_db(&local_models).await {
-            tracing::warn!("[ModelRegistry] 保存本地模型到数据库失败: {}", e);
-        }
-
-        // 3. 后台获取 models.dev 数据
+        // 2. 后台获取 models 仓库数据
         self.spawn_background_refresh();
 
         Ok(())
@@ -109,15 +161,15 @@ impl ModelRegistryService {
                 models_cache,
                 sync_state,
             };
-            if let Err(e) = service.refresh_from_models_dev().await {
+            if let Err(e) = service.refresh_from_repo().await {
                 tracing::error!("[ModelRegistry] 后台刷新失败: {}", e);
             }
         });
     }
 
-    /// 从 models.dev API 刷新数据
-    pub async fn refresh_from_models_dev(&self) -> Result<(), String> {
-        tracing::info!("[ModelRegistry] 开始从 models.dev 获取数据");
+    /// 从 aiclientproxy/models 仓库刷新数据
+    pub async fn refresh_from_repo(&self) -> Result<(), String> {
+        tracing::info!("[ModelRegistry] 开始从 models 仓库获取数据");
 
         // 设置同步状态
         {
@@ -127,31 +179,27 @@ impl ModelRegistryService {
         }
 
         // 获取数据
-        let result = self.fetch_models_dev_data().await;
+        let result = self.fetch_models_from_repo().await;
 
         match result {
-            Ok(models_dev_models) => {
-                // 合并本地模型
-                let local_models = get_local_models();
-                let merged = self.merge_models(models_dev_models, local_models);
-
-                tracing::info!("[ModelRegistry] 获取并合并了 {} 个模型", merged.len());
+            Ok(models) => {
+                tracing::info!("[ModelRegistry] 获取了 {} 个模型", models.len());
 
                 // 更新缓存
                 {
                     let mut cache = self.models_cache.write().await;
-                    *cache = merged.clone();
+                    *cache = models.clone();
                 }
 
                 // 保存到数据库
-                self.save_models_to_db(&merged).await?;
+                self.save_models_to_db(&models).await?;
 
                 // 更新同步状态
                 {
                     let mut state = self.sync_state.write().await;
                     state.is_syncing = false;
                     state.last_sync_at = Some(chrono::Utc::now().timestamp());
-                    state.model_count = merged.len() as u32;
+                    state.model_count = models.len() as u32;
                     state.last_error = None;
                 }
 
@@ -161,7 +209,7 @@ impl ModelRegistryService {
                 Ok(())
             }
             Err(e) => {
-                tracing::error!("[ModelRegistry] 从 models.dev 获取数据失败: {}", e);
+                tracing::error!("[ModelRegistry] 从 models 仓库获取数据失败: {}", e);
 
                 // 更新同步状态
                 {
@@ -175,76 +223,136 @@ impl ModelRegistryService {
         }
     }
 
-    /// 从 models.dev API 获取数据
-    async fn fetch_models_dev_data(&self) -> Result<Vec<EnhancedModelMetadata>, String> {
+    /// 从 models 仓库获取数据
+    async fn fetch_models_from_repo(&self) -> Result<Vec<EnhancedModelMetadata>, String> {
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(30))
             .build()
             .map_err(|e| format!("创建 HTTP 客户端失败: {}", e))?;
 
-        let response = client
-            .get(MODELS_DEV_API_URL)
+        // 1. 获取索引文件
+        let index_url = format!("{}/index.json", MODELS_REPO_BASE_URL);
+        let index: RepoIndex = client
+            .get(&index_url)
             .header("User-Agent", "ProxyCast/1.0")
             .send()
             .await
-            .map_err(|e| format!("请求 models.dev 失败: {}", e))?;
-
-        if !response.status().is_success() {
-            return Err(format!("models.dev 返回错误状态码: {}", response.status()));
-        }
-
-        let data: HashMap<String, ModelsDevProvider> = response
+            .map_err(|e| format!("请求 index.json 失败: {}", e))?
             .json()
             .await
-            .map_err(|e| format!("解析 models.dev 响应失败: {}", e))?;
+            .map_err(|e| format!("解析 index.json 失败: {}", e))?;
 
-        // 转换为内部格式
+        tracing::info!(
+            "[ModelRegistry] 索引包含 {} 个 providers",
+            index.providers.len()
+        );
+
+        // 2. 并发获取所有 provider 数据
         let mut models = Vec::new();
-        for (provider_id, provider) in data {
-            for (_, model) in provider.models {
-                let enhanced = model.to_enhanced_metadata(&provider_id, &provider.name);
-                models.push(enhanced);
+        let now = chrono::Utc::now().timestamp();
+
+        for provider_id in &index.providers {
+            let provider_url = format!("{}/providers/{}.json", MODELS_REPO_BASE_URL, provider_id);
+
+            match client
+                .get(&provider_url)
+                .header("User-Agent", "ProxyCast/1.0")
+                .send()
+                .await
+            {
+                Ok(response) => {
+                    if response.status().is_success() {
+                        match response.json::<RepoProviderData>().await {
+                            Ok(provider_data) => {
+                                for model in provider_data.models {
+                                    let enhanced = self.convert_repo_model(
+                                        model,
+                                        &provider_data.provider.id,
+                                        &provider_data.provider.name,
+                                        now,
+                                    );
+                                    models.push(enhanced);
+                                }
+                            }
+                            Err(e) => {
+                                tracing::warn!("[ModelRegistry] 解析 {} 失败: {}", provider_id, e);
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("[ModelRegistry] 获取 {} 失败: {}", provider_id, e);
+                }
             }
         }
 
+        // 按 provider_id 和 display_name 排序
+        models.sort_by(|a, b| {
+            a.provider_id
+                .cmp(&b.provider_id)
+                .then(a.display_name.cmp(&b.display_name))
+        });
+
         tracing::info!(
-            "[ModelRegistry] 从 models.dev 获取了 {} 个模型",
+            "[ModelRegistry] 从 models 仓库获取了 {} 个模型",
             models.len()
         );
 
         Ok(models)
     }
 
-    /// 合并 models.dev 数据和本地数据
-    fn merge_models(
+    /// 转换仓库模型格式为内部格式
+    fn convert_repo_model(
         &self,
-        models_dev: Vec<EnhancedModelMetadata>,
-        local: Vec<EnhancedModelMetadata>,
-    ) -> Vec<EnhancedModelMetadata> {
-        let mut merged: HashMap<String, EnhancedModelMetadata> = HashMap::new();
+        model: RepoModel,
+        provider_id: &str,
+        provider_name: &str,
+        now: i64,
+    ) -> EnhancedModelMetadata {
+        let caps = model.capabilities.unwrap_or_default();
 
-        // 先添加 models.dev 数据
-        for model in models_dev {
-            merged.insert(model.id.clone(), model);
+        EnhancedModelMetadata {
+            id: model.id,
+            display_name: model.name,
+            provider_id: provider_id.to_string(),
+            provider_name: provider_name.to_string(),
+            family: model.family,
+            tier: model
+                .tier
+                .and_then(|t| t.parse().ok())
+                .unwrap_or(ModelTier::Pro),
+            capabilities: ModelCapabilities {
+                vision: caps.vision,
+                tools: caps.tools,
+                streaming: caps.streaming,
+                json_mode: caps.json_mode,
+                function_calling: caps.function_calling,
+                reasoning: caps.reasoning,
+            },
+            pricing: model.pricing.map(|p| ModelPricing {
+                input_per_million: p.input,
+                output_per_million: p.output,
+                cache_read_per_million: p.cache_read,
+                cache_write_per_million: p.cache_write,
+                currency: p.currency.unwrap_or_else(|| "USD".to_string()),
+            }),
+            limits: ModelLimits {
+                context_length: model.limits.as_ref().and_then(|l| l.context),
+                max_output_tokens: model.limits.as_ref().and_then(|l| l.max_output),
+                requests_per_minute: None,
+                tokens_per_minute: None,
+            },
+            status: model
+                .status
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(ModelStatus::Active),
+            release_date: model.release_date,
+            is_latest: model.is_latest.unwrap_or(false),
+            description: model.description_zh.or(model.description),
+            source: ModelSource::ModelsDev,
+            created_at: now,
+            updated_at: now,
         }
-
-        // 本地数据覆盖或补充
-        for model in local {
-            // 如果 models.dev 没有这个模型，或者本地数据更新，则使用本地数据
-            if !merged.contains_key(&model.id) {
-                merged.insert(model.id.clone(), model);
-            }
-        }
-
-        let mut result: Vec<_> = merged.into_values().collect();
-        // 按 provider_id 和 display_name 排序
-        result.sort_by(|a, b| {
-            a.provider_id
-                .cmp(&b.provider_id)
-                .then(a.display_name.cmp(&b.display_name))
-        });
-
-        result
     }
 
     /// 从数据库加载模型
