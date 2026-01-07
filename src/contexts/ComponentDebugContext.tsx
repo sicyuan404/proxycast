@@ -12,6 +12,11 @@ export interface ComponentInfo {
   tagName: string;
   x: number;
   y: number;
+  /** 当前 DOM 元素引用，用于查找父组件 */
+  element?: HTMLElement;
+  /** 当前 Fiber 节点，用于向上遍历 */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  fiber?: any;
 }
 
 interface ComponentDebugContextType {
