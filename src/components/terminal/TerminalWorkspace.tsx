@@ -15,7 +15,7 @@
  * - 右侧小部件栏
  */
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import styled from "styled-components";
 import { TerminalPanel } from "./TerminalPanel";
 import {
@@ -26,6 +26,7 @@ import {
   WidgetProvider,
   WidgetType,
 } from "./widgets";
+import { TerminalAIPanel } from "./ai";
 import {
   ConnectionSelector,
   type ConnectionListEntry,
@@ -38,7 +39,7 @@ import { Page } from "@/types/page";
 // ============================================================================
 
 /** 附加面板类型 */
-export type SidePanelType = "terminal" | "files" | "web" | "sysinfo";
+export type SidePanelType = "terminal" | "files" | "web" | "sysinfo" | "ai";
 
 /** 附加面板配置 */
 export interface SidePanel {
@@ -184,6 +185,14 @@ const SysinfoIcon = () => (
   </svg>
 );
 
+const AIIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M12 2L2 7l10 5 10-5-10-5z" />
+    <path d="M2 17l10 5 10-5" />
+    <path d="M2 12l10 5 10-5" />
+  </svg>
+);
+
 const CloseIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
     <line x1="18" y1="6" x2="6" y2="18" />
@@ -209,6 +218,12 @@ export function TerminalWorkspace({ onNavigate }: TerminalWorkspaceProps) {
     { id: "main-terminal", type: "terminal", title: "Terminal" },
   ]);
 
+  // AI 面板状态
+  const [showAIPanel, setShowAIPanel] = useState(false);
+
+  // 终端输出引用（用于 AI 上下文）
+  const terminalOutputRef = useRef<string | null>(null);
+
   // 连接编辑器模态窗口状态
   const [isConnectionsEditorOpen, setIsConnectionsEditorOpen] = useState(false);
 
@@ -224,6 +239,7 @@ export function TerminalWorkspace({ onNavigate }: TerminalWorkspaceProps) {
           files: "Files",
           web: "Web",
           sysinfo: "Sysinfo",
+          ai: "AI",
         };
 
         // 如果有连接配置，使用连接标签作为标题
@@ -281,6 +297,8 @@ export function TerminalWorkspace({ onNavigate }: TerminalWorkspaceProps) {
         return <WebIcon />;
       case "sysinfo":
         return <SysinfoIcon />;
+      case "ai":
+        return <AIIcon />;
       default:
         return null;
     }
@@ -294,6 +312,11 @@ export function TerminalWorkspace({ onNavigate }: TerminalWorkspaceProps) {
     [addPanel],
   );
 
+  // 获取终端输出（用于 AI 上下文）
+  const getTerminalOutput = useCallback(() => {
+    return terminalOutputRef.current;
+  }, []);
+
   // 渲染面板内容
   const renderPanelContent = (panel: SidePanel) => {
     switch (panel.type) {
@@ -305,6 +328,8 @@ export function TerminalWorkspace({ onNavigate }: TerminalWorkspaceProps) {
         return <WebView />;
       case "sysinfo":
         return <SysinfoView />;
+      case "ai":
+        return <TerminalAIPanel getTerminalOutput={getTerminalOutput} />;
       default:
         return null;
     }
@@ -329,6 +354,10 @@ export function TerminalWorkspace({ onNavigate }: TerminalWorkspaceProps) {
         case "sysinfo":
           addPanel("sysinfo");
           break;
+        case "ai":
+          // 切换 AI 面板显示
+          setShowAIPanel((prev) => !prev);
+          break;
         case "settings":
           onNavigate("settings");
           break;
@@ -349,6 +378,15 @@ export function TerminalWorkspace({ onNavigate }: TerminalWorkspaceProps) {
   return (
     <WidgetProvider>
       <WorkspaceOuterContainer>
+        {/* AI 面板（左侧，参考 Waveterm） */}
+        {showAIPanel && (
+          <div
+            style={{ width: 320, minWidth: 280, maxWidth: 400, flexShrink: 0 }}
+          >
+            <TerminalAIPanel getTerminalOutput={getTerminalOutput} />
+          </div>
+        )}
+
         <WorkspaceContainer>
           {/* 所有面板统一渲染，都可以关闭和多开 */}
           {panels.map((panel) => (

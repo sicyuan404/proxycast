@@ -22,6 +22,22 @@ export { TerminalPanel } from "./TerminalPanel";
 // 小部件系统（供外部使用，如独立页面）
 export { SysinfoView, FileBrowserView, WebView } from "./widgets";
 
+// Terminal AI 组件
+export {
+  TerminalAIPanel,
+  TerminalAIInput,
+  TerminalAIMessages,
+  TerminalAIModeSelector,
+  useTerminalAI,
+} from "./ai";
+export type {
+  AIMessage,
+  AIMessageImage,
+  AIContentPart,
+  TerminalAIConfig,
+  UseTerminalAIReturn,
+} from "./ai";
+
 // VDOM 组件
 // _Requirements: 14.1, 14.2, 14.3, 14.4, 14.5_
 export { VDomModeSwitch, VDomModeToggle } from "./VDomModeSwitch";

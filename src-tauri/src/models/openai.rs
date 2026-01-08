@@ -78,6 +78,41 @@ impl ChatMessage {
             None => String::new(),
         }
     }
+
+    /// 提取消息中的图片 URL 列表
+    /// 返回 (format, base64_data) 元组列表
+    pub fn get_images(&self) -> Vec<(String, String)> {
+        match &self.content {
+            Some(MessageContent::Parts(parts)) => parts
+                .iter()
+                .filter_map(|p| {
+                    if let ContentPart::ImageUrl { image_url } = p {
+                        // 解析 data URL: data:image/jpeg;base64,xxxxx
+                        if image_url.url.starts_with("data:") {
+                            let parts: Vec<&str> = image_url.url.splitn(2, ',').collect();
+                            if parts.len() == 2 {
+                                // 提取 media_type: data:image/jpeg;base64 -> image/jpeg
+                                let header = parts[0];
+                                let data = parts[1];
+                                let media_type = header
+                                    .strip_prefix("data:")
+                                    .and_then(|s| s.split(';').next())
+                                    .unwrap_or("image/jpeg");
+                                // 提取格式: image/jpeg -> jpeg
+                                let format =
+                                    media_type.split('/').nth(1).unwrap_or("jpeg").to_string();
+                                return Some((format, data.to_string()));
+                            }
+                        }
+                        None
+                    } else {
+                        None
+                    }
+                })
+                .collect(),
+            _ => Vec::new(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

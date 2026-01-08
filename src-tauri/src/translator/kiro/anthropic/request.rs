@@ -60,6 +60,7 @@ struct ProcessedMessage {
     content: String,
     tool_uses: Option<Vec<CWToolUse>>,
     tool_results: Option<Vec<CWToolResult>>,
+    images: Option<Vec<CWImage>>,
 }
 
 // ============================================================================
@@ -105,7 +106,7 @@ pub fn convert_anthropic_to_codewhisperer(
             content: combined,
             model_id: cw_model.clone(),
             origin: "AI_EDITOR".to_string(),
-            images: None,
+            images: messages[0].images.clone(), // 传递图片
             user_input_message_context: None,
         };
 
@@ -144,7 +145,7 @@ pub fn convert_anthropic_to_codewhisperer(
                     content,
                     model_id: cw_model.clone(),
                     origin: "AI_EDITOR".to_string(),
-                    images: None,
+                    images: msg.images.clone(), // 传递图片
                     user_input_message_context: None,
                 };
 
@@ -181,24 +182,29 @@ pub fn convert_anthropic_to_codewhisperer(
     let history = fix_history_alternation(history, &cw_model);
 
     // 构建当前消息
-    let (current_content, current_tool_results) = if let Some(last_msg) = messages.last() {
-        if last_msg.role == "assistant" {
-            ("Continue".to_string(), None)
-        } else {
-            let content = if last_msg.content.is_empty() {
-                if last_msg.tool_results.is_some() {
-                    "Tool results provided.".to_string()
-                } else {
-                    "Continue".to_string()
-                }
+    let (current_content, current_tool_results, current_images) =
+        if let Some(last_msg) = messages.last() {
+            if last_msg.role == "assistant" {
+                ("Continue".to_string(), None, None)
             } else {
-                last_msg.content.clone()
-            };
-            (content, last_msg.tool_results.clone())
-        }
-    } else {
-        ("Continue".to_string(), None)
-    };
+                let content = if last_msg.content.is_empty() {
+                    if last_msg.tool_results.is_some() {
+                        "Tool results provided.".to_string()
+                    } else {
+                        "Continue".to_string()
+                    }
+                } else {
+                    last_msg.content.clone()
+                };
+                (
+                    content,
+                    last_msg.tool_results.clone(),
+                    last_msg.images.clone(),
+                )
+            }
+        } else {
+            ("Continue".to_string(), None, None)
+        };
 
     // 构建 tools
     let tools = convert_anthropic_tools(&request.tools);
@@ -212,6 +218,14 @@ pub fn convert_anthropic_to_codewhisperer(
         None
     };
 
+    // 记录图片信息
+    if let Some(ref imgs) = current_images {
+        tracing::info!(
+            "[KIRO_TRANSLATE] Current message contains {} image(s)",
+            imgs.len()
+        );
+    }
+
     CodeWhispererRequest {
         conversation_state: ConversationState {
             chat_trigger_type: "MANUAL".to_string(),
@@ -221,7 +235,7 @@ pub fn convert_anthropic_to_codewhisperer(
                     content: current_content,
                     model_id: cw_model,
                     origin: "AI_EDITOR".to_string(),
-                    images: None,
+                    images: current_images, // 传递当前消息的图片
                     user_input_message_context,
                 },
             },
@@ -292,6 +306,7 @@ fn preprocess_anthropic_messages(messages: &[AnthropicMessage]) -> Vec<Processed
                     } else {
                         Some(pending_tool_results.clone())
                     },
+                    images: msg.images, // 保留图片
                 });
                 pending_tool_results.clear();
             }
@@ -306,6 +321,7 @@ fn preprocess_anthropic_messages(messages: &[AnthropicMessage]) -> Vec<Processed
                     content: "Tool results provided.".to_string(),
                     tool_uses: None,
                     tool_results: Some(pending_tool_results.clone()),
+                    images: None,
                 });
                 pending_tool_results.clear();
             }
@@ -323,6 +339,7 @@ fn preprocess_anthropic_messages(messages: &[AnthropicMessage]) -> Vec<Processed
             content: "Tool results provided.".to_string(),
             tool_uses: None,
             tool_results: Some(pending_tool_results),
+            images: None,
         });
     }
 
@@ -340,12 +357,14 @@ fn convert_anthropic_message(msg: &AnthropicMessage) -> Vec<ProcessedMessage> {
                 content: s.clone(),
                 tool_uses: None,
                 tool_results: None,
+                images: None,
             });
         }
         serde_json::Value::Array(parts) => {
             let mut text_parts: Vec<String> = Vec::new();
             let mut tool_uses: Vec<CWToolUse> = Vec::new();
             let mut tool_results: Vec<CWToolResult> = Vec::new();
+            let mut images: Vec<CWImage> = Vec::new();
 
             for part in parts {
                 let part_type = part.get("type").and_then(|t| t.as_str()).unwrap_or("");
@@ -354,6 +373,39 @@ fn convert_anthropic_message(msg: &AnthropicMessage) -> Vec<ProcessedMessage> {
                     "text" => {
                         if let Some(text) = part.get("text").and_then(|t| t.as_str()) {
                             text_parts.push(text.to_string());
+                        }
+                    }
+                    "image" => {
+                        // 处理 Anthropic 格式的图片
+                        // { "type": "image", "source": { "type": "base64", "media_type": "image/jpeg", "data": "..." } }
+                        if let Some(source) = part.get("source") {
+                            let source_type =
+                                source.get("type").and_then(|t| t.as_str()).unwrap_or("");
+                            if source_type == "base64" {
+                                let media_type = source
+                                    .get("media_type")
+                                    .and_then(|m| m.as_str())
+                                    .unwrap_or("image/jpeg");
+                                let data =
+                                    source.get("data").and_then(|d| d.as_str()).unwrap_or("");
+
+                                if !data.is_empty() {
+                                    // 从 media_type 提取格式 (image/jpeg -> jpeg)
+                                    let format =
+                                        media_type.split('/').nth(1).unwrap_or("jpeg").to_string();
+
+                                    images.push(CWImage {
+                                        format,
+                                        source: CWImageSource {
+                                            bytes: data.to_string(),
+                                        },
+                                    });
+                                    tracing::debug!(
+                                        "[KIRO_TRANSLATE] Converted image: media_type={}",
+                                        media_type
+                                    );
+                                }
+                            }
                         }
                     }
                     "tool_use" => {
@@ -407,6 +459,7 @@ fn convert_anthropic_message(msg: &AnthropicMessage) -> Vec<ProcessedMessage> {
                         Some(tool_uses)
                     },
                     tool_results: None,
+                    images: None, // assistant 消息不包含图片
                 });
             }
             // 处理 user 消息
@@ -418,16 +471,22 @@ fn convert_anthropic_message(msg: &AnthropicMessage) -> Vec<ProcessedMessage> {
                         content: String::new(),
                         tool_uses: None,
                         tool_results: Some(tool_results),
+                        images: None,
                     });
                 }
 
-                // 添加文本内容
-                if !text_parts.is_empty() {
+                // 添加文本内容和图片
+                if !text_parts.is_empty() || !images.is_empty() {
                     result.push(ProcessedMessage {
                         role: "user".to_string(),
                         content: text_parts.join(""),
                         tool_uses: None,
                         tool_results: None,
+                        images: if images.is_empty() {
+                            None
+                        } else {
+                            Some(images)
+                        },
                     });
                 }
             }

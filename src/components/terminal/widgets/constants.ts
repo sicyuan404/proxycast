@@ -18,6 +18,15 @@ import {
  */
 export const DEFAULT_WIDGETS: WidgetConfig[] = [
   {
+    id: "ai",
+    label: "AI",
+    icon: "Sparkles",
+    color: "var(--warning-color, #F59E0B)",
+    description: "Terminal AI 助手",
+    displayOrder: 0,
+    type: "ai",
+  },
+  {
     id: "terminal",
     label: "终端",
     icon: "Terminal",

@@ -17,6 +17,7 @@ export type WidgetType =
   | "files"
   | "web"
   | "sysinfo"
+  | "ai"
   | "settings"
   | "tips"
   | "help"

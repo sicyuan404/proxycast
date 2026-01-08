@@ -48,13 +48,14 @@
 - **VDOM 模式**: 支持在终端内嵌入 React 组件
 - **贴纸系统**: 支持在终端上显示可定位的贴纸标注
 - **分块布局**: 支持在主终端旁添加附加面板（对齐 Waveterm TileLayout）
-- **右侧小部件栏**: 快速添加 Terminal/Files/Web/Sysinfo 面板
+- **右侧小部件栏**: 快速添加 Terminal/Files/Web/Sysinfo/AI 面板
+- **Terminal AI**: 内置 AI 助手，支持终端上下文理解
 
 ## 文件索引
 
 - `index.ts` - 模块导出
 - `TerminalPage.tsx` - 终端页面组件（多标签页管理）
-- `TerminalWorkspace.tsx` - 终端工作区组件（分块布局 + 小部件栏）
+- `TerminalWorkspace.tsx` - 终端工作区组件（分块布局 + 小部件栏 + AI 面板）
 - `TerminalPanel.tsx` - 独立终端面板组件（用于分块布局）
 - `TerminalView.tsx` - 终端视图组件（使用 Jotai 原子状态）
 - `TerminalSearch.tsx` - 终端搜索组件
@@ -69,6 +70,7 @@
 - `termwrap.ts` - 终端封装类（连接模式，WebGL/Unicode11 支持）
 - `fitaddon.ts` - 自定义 FitAddon
 - `terminal.css` - 终端样式（Tokyo Night 主题）
+- `ai/` - Terminal AI 模块（AI 助手面板）
 - `widgets/` - 小部件系统子目录
 
 ## widgets 子目录
