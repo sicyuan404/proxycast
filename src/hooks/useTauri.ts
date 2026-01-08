@@ -1,11 +1,11 @@
 // Safe Tauri invoke wrapper for web mode compatibility
 const safeInvoke = async (cmd: string, args?: any): Promise<any> => {
-  // Check if Tauri is available
-  if (typeof window !== "undefined" && (window as any).__TAURI__) {
-    return (window as any).__TAURI__.invoke(cmd, args);
+  // Check if Tauri v2 is available (invoke is under __TAURI__.core)
+  if (typeof window !== "undefined" && (window as any).__TAURI__?.core?.invoke) {
+    return (window as any).__TAURI__.core.invoke(cmd, args);
   }
 
-  // Try to use real Tauri API
+  // Fallback: Try to use @tauri-apps/api/core
   try {
     const { invoke } = await import("@tauri-apps/api/core");
     return invoke(cmd, args);

@@ -15,10 +15,15 @@
 //! - 5.4: 连接断开处理和重连
 //! - 5.6: 终端大小同步
 
+use std::io::{Read, Write};
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicI64, Ordering};
 use std::sync::Arc;
 
-use parking_lot::RwLock;
+use base64::engine::general_purpose::STANDARD as BASE64;
+use base64::Engine;
+use parking_lot::{Mutex, RwLock};
+
+use crate::terminal::{SessionStatus, TerminalOutputEvent, TerminalStatusEvent};
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 

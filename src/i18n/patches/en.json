@@ -3600,5 +3600,14 @@
   "导出按钮": "Export button",
   "清理按钮": "Cleanup button",
   "详情视图": "Detail view",
-  "清理对话框": "Cleanup dialog"
+  "清理对话框": "Cleanup dialog",
+  "// === Developer Settings (src/components/settings/DeveloperSettings.tsx) ===": "",
+  "开发者": "Developer",
+  "开发者工具": "Developer Tools",
+  "组件视图调试": "Component View Debug",
+  "显示组件轮廓，Alt+点击查看组件信息": "Show component outlines, Alt+click to view component info",
+  "使用说明:": "Instructions:",
+  "按住 Alt 键 + 鼠标悬浮显示组件轮廓": "Hold Alt + hover to show component outlines",
+  "Alt + 点击组件可查看名称和文件路径": "Alt + click component to view name and file path",
+  "文件路径仅在开发模式 (npm run tauri dev) 下可用": "File path only available in dev mode (npm run tauri dev)"
 }

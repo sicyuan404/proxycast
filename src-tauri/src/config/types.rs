@@ -1176,6 +1176,7 @@ impl Default for Config {
             ampcode: AmpConfig::default(),
             endpoint_providers: EndpointProvidersConfig::default(),
             minimize_to_tray: default_minimize_to_tray(),
+            language: default_language(),
             models: ModelsConfig::default(),
             agent: NativeAgentConfig::default(),
         }
