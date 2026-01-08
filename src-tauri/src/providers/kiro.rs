@@ -14,42 +14,40 @@ use serde::{Deserialize, Serialize};
 use std::error::Error;
 use std::path::PathBuf;
 
-/// 根据凭证信息生成唯一的 Machine ID（参考 AIClient-2-API 实现）
+/// 根据凭证信息生成唯一的 Machine ID（与 AIClient-2-API 保持一致）
 ///
-/// 关键改进：每个凭证生成独立的 Machine ID，避免多账号共用同一指纹被检测
-/// 优先级：profileArn > clientId > 系统硬件 ID
+/// 采用静态 UUID 方案：每个凭证生成固定的 Machine ID，不随时间变化
+/// 优先级：uuid > profileArn > clientId > 系统硬件 ID
 ///
-/// 防指纹固化：添加基于小时的时间变化因子，在保持稳定性的同时避免指纹完全固化
-/// 这样每个 OAuth 凭证都有自己独立的指纹，模拟不同设备登录
+/// 这是目前最稳定的方案，与 AIClient-2-API 的实现完全一致
 pub fn generate_machine_id_from_credentials(
+    profile_arn: Option<&str>,
+    client_id: Option<&str>,
+) -> String {
+    generate_machine_id_from_credentials_with_uuid(None, profile_arn, client_id)
+}
+
+/// 带 UUID 参数的 Machine ID 生成函数（与 AIClient-2-API 完全一致）
+///
+/// 优先级：uuid > profileArn > clientId > 默认值
+/// 生成静态的 SHA256 哈希，不包含时间因子
+pub fn generate_machine_id_from_credentials_with_uuid(
+    uuid: Option<&str>,
     profile_arn: Option<&str>,
     client_id: Option<&str>,
 ) -> String {
     use sha2::{Digest, Sha256};
 
-    // 优先使用凭证相关的唯一标识，确保每个账号有独立的 Machine ID
-    let unique_key = profile_arn
+    // 优先级：uuid > profileArn > clientId > 默认值（与 AIClient-2-API 一致）
+    let unique_key = uuid
         .filter(|s| !s.is_empty())
+        .or(profile_arn.filter(|s| !s.is_empty()))
         .or(client_id.filter(|s| !s.is_empty()))
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| {
-            // 回退到系统硬件 ID
-            get_raw_machine_id().unwrap_or_else(|| "KIRO_DEFAULT_MACHINE".to_string())
-        });
+        .unwrap_or("KIRO_DEFAULT_MACHINE");
 
-    // 添加时间变化因子 - 按小时变化，避免指纹固化
-    // 使用小时级别的时间戳，确保在同一小时内指纹稳定，但定期变化
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-
-    // 按小时分组，每小时指纹会轻微变化
-    let hour_slot = now / 3600;
-
+    // 静态哈希，不添加时间因子（与 AIClient-2-API 保持一致）
     let mut hasher = Sha256::new();
     hasher.update(unique_key.as_bytes());
-    hasher.update(&hour_slot.to_le_bytes()); // 添加时间因子
     let result = hasher.finalize();
     format!("{:x}", result)
 }
