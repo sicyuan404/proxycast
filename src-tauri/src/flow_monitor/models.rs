@@ -539,6 +539,9 @@ pub struct ToolCallDelta {
 pub struct FlowMetadata {
     /// 提供商类型
     pub provider: ProviderType,
+    /// 提供商 ID（实际的 provider ID，如 "deepseek", "moonshot" 等）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_id: Option<String>,
     /// 凭证 ID
     #[serde(skip_serializing_if = "Option::is_none")]
     pub credential_id: Option<String>,
@@ -564,6 +567,7 @@ impl Default for FlowMetadata {
     fn default() -> Self {
         Self {
             provider: ProviderType::Kiro,
+            provider_id: None,
             credential_id: None,
             credential_name: None,
             retry_count: 0,
@@ -1063,6 +1067,7 @@ mod property_tests {
         )
             .prop_map(|(provider, credential_id, credential_name)| FlowMetadata {
                 provider,
+                provider_id: None,
                 credential_id,
                 credential_name,
                 retry_count: 0,

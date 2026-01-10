@@ -1269,6 +1269,7 @@ mod property_tests {
     fn arb_flow_metadata() -> impl Strategy<Value = FlowMetadata> {
         arb_provider_type().prop_map(|provider| FlowMetadata {
             provider,
+            provider_id: None,
             credential_id: None,
             credential_name: None,
             retry_count: 0,

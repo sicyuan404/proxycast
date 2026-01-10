@@ -268,6 +268,7 @@ fn build_llm_request_from_anthropic(
 /// 构建 FlowMetadata
 fn build_flow_metadata(
     provider: ProviderType,
+    provider_id: Option<&str>,
     credential_id: Option<&str>,
     credential_name: Option<&str>,
     headers: &HeaderMap,
@@ -287,6 +288,7 @@ fn build_flow_metadata(
 
     FlowMetadata {
         provider,
+        provider_id: provider_id.map(|s| s.to_string()),
         credential_id: credential_id.map(|s| s.to_string()),
         credential_name: credential_name.map(|s| s.to_string()),
         retry_count: 0,
@@ -972,13 +974,25 @@ pub async fn chat_completions(
         let llm_request = build_llm_request_from_openai(&request, "/v1/chat/completions", &headers);
 
         // 尝试将 selected_provider 解析为 ProviderType
-        // 如果是自定义 provider ID，则使用 OpenAI 作为默认值（因为大多数自定义 provider 使用 OpenAI 协议）
+        // 构建 Flow Metadata，同时保存 provider_type 和实际的 provider_id
         let provider_type = selected_provider
             .parse::<ProviderType>()
             .unwrap_or(ProviderType::OpenAI);
 
+        // 从凭证名称中提取 Provider 显示名称
+        // 凭证名称格式：Some("[降级] DeepSeek") 或 Some("DeepSeek")
+        let provider_display_name = cred.name.as_ref().and_then(|name| {
+            // 去掉 "[降级] " 前缀
+            if name.starts_with("[降级] ") {
+                Some(&name[9..]) // "[降级] " 是 9 个字节
+            } else {
+                Some(name.as_str())
+            }
+        });
+
         let flow_metadata = build_flow_metadata(
             provider_type,
+            provider_display_name, // 使用 Provider 显示名称（如 "DeepSeek"）
             Some(&cred.uuid),
             cred.name.as_deref(),
             &headers,
@@ -1026,6 +1040,7 @@ pub async fn chat_completions(
 
         // 记录请求统计
         let is_success = response.status().is_success();
+        let status_code = response.status().as_u16();
         let status = if is_success {
             crate::telemetry::RequestStatus::Success
         } else {
@@ -1033,38 +1048,99 @@ pub async fn chat_completions(
         };
         record_request_telemetry(&state, &ctx, status, None);
 
-        // 如果成功，记录估算的 Token 使用量
-        let estimated_input_tokens = request
-            .messages
-            .iter()
-            .map(|m| {
-                let content_len = match &m.content {
-                    Some(c) => message_content_len(c),
-                    None => 0,
-                };
-                content_len / 4
-            })
-            .sum::<usize>() as u32;
-        let estimated_output_tokens = if is_success { 100u32 } else { 0u32 };
+        // 如果成功且需要 Flow 捕获，提取响应体内容和响应头
+        // 注意：非流式响应需要读取 body，所以必须在这里处理
+        if is_success && flow_id.is_some() && !request.stream {
+            // 将 Response 转换为 bytes
+            let (parts, body) = response.into_parts();
 
-        if is_success {
-            record_token_usage(
-                &state,
-                &ctx,
-                Some(estimated_input_tokens),
-                Some(estimated_output_tokens),
-            );
-        }
+            // 提取响应头
+            let mut response_headers = HashMap::new();
+            for (name, value) in parts.headers.iter() {
+                if let Ok(v) = value.to_str() {
+                    response_headers.insert(name.as_str().to_string(), v.to_string());
+                }
+            }
 
-        // 完成 Flow 捕获并检查响应拦截
-        // **Validates: Requirements 2.1, 2.5**
-        if let Some(fid) = flow_id {
-            if is_success {
-                let llm_response = build_llm_response(
-                    200,
-                    "", // 内容在 provider_calls 中处理
-                    Some((estimated_input_tokens, estimated_output_tokens)),
-                );
+            let body_bytes = match axum::body::to_bytes(body, usize::MAX).await {
+                Ok(bytes) => bytes,
+                Err(e) => {
+                    eprintln!("[CHAT_COMPLETIONS] 读取响应体失败: {}", e);
+                    // 如果读取失败，返回错误
+                    if let Some(fid) = flow_id {
+                        let error = FlowError::new(FlowErrorType::Network, &e.to_string());
+                        state.flow_monitor.fail_flow(&fid, error).await;
+                    }
+                    return (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(serde_json::json!({"error": {"message": format!("Failed to read response body: {}", e)}})),
+                    )
+                        .into_response();
+                }
+            };
+
+            // 解析响应体
+            let response_json: serde_json::Value = match serde_json::from_slice(&body_bytes) {
+                Ok(json) => json,
+                Err(e) => {
+                    eprintln!("[CHAT_COMPLETIONS] 解析响应体失败: {}", e);
+                    // 如果解析失败，仍然返回原始响应
+                    if let Some(fid) = flow_id {
+                        let error = FlowError::new(
+                            FlowErrorType::Other,
+                            &format!("Failed to parse response: {}", e),
+                        );
+                        state.flow_monitor.fail_flow(&fid, error).await;
+                    }
+                    // 重新构建响应
+                    let response = Response::from_parts(parts, Body::from(body_bytes));
+                    return response;
+                }
+            };
+
+            // 提取内容和 token 使用量
+            // 优先从 content 字段提取，如果为空则尝试从 tool_calls 提取
+            let mut content = response_json["choices"][0]["message"]["content"]
+                .as_str()
+                .unwrap_or("")
+                .to_string();
+
+            // 如果 content 为空，检查是否有 tool_calls
+            if content.is_empty() {
+                if let Some(tool_calls) =
+                    response_json["choices"][0]["message"]["tool_calls"].as_array()
+                {
+                    if !tool_calls.is_empty() {
+                        // 从第一个 tool_call 的 arguments 中提取内容
+                        if let Some(arguments) = tool_calls[0]["function"]["arguments"].as_str() {
+                            content = arguments.to_string();
+                            eprintln!("[CHAT_COMPLETIONS] 从 tool_calls 中提取内容");
+                        }
+                    }
+                }
+            }
+
+            let input_tokens = response_json["usage"]["prompt_tokens"]
+                .as_u64()
+                .unwrap_or(0) as u32;
+            let output_tokens = response_json["usage"]["completion_tokens"]
+                .as_u64()
+                .unwrap_or(0) as u32;
+
+            eprintln!("[CHAT_COMPLETIONS] 提取响应内容: content_len={}, input_tokens={}, output_tokens={}", 
+                content.len(), input_tokens, output_tokens);
+
+            // 记录 Token 使用量
+            record_token_usage(&state, &ctx, Some(input_tokens), Some(output_tokens));
+
+            // 完成 Flow 捕获并检查响应拦截
+            // **Validates: Requirements 2.1, 2.5**
+            if let Some(fid) = flow_id {
+                // 构建 LLMResponse，包含完整的响应体和响应头
+                let mut llm_response =
+                    build_llm_response(200, &content, Some((input_tokens, output_tokens)));
+                llm_response.body = response_json.clone();
+                llm_response.headers = response_headers; // 设置响应头
 
                 // 检查是否需要拦截响应
                 if let Some(modified_response) = check_response_intercept(
@@ -1090,7 +1166,6 @@ pub async fn chat_completions(
                         .await;
 
                     // 构建修改后的 HTTP 响应
-                    // 注意：这里简化处理，实际应该根据修改后的内容重新构建完整响应
                     return (
                         StatusCode::OK,
                         Json(serde_json::json!({
@@ -1119,21 +1194,59 @@ pub async fn chat_completions(
                         .into_response();
                 }
 
+                eprintln!("[FLOW_DEBUG] 准备完成 Flow: flow_id={}, content_len={}, input_tokens={}, output_tokens={}", 
+                    fid, llm_response.content.len(), llm_response.usage.input_tokens, llm_response.usage.output_tokens);
+
                 state
                     .flow_monitor
                     .complete_flow(&fid, Some(llm_response))
                     .await;
-            } else {
-                let error = FlowError::new(
-                    FlowErrorType::from_status_code(response.status().as_u16()),
-                    "Request failed",
-                )
-                .with_status_code(response.status().as_u16());
-                state.flow_monitor.fail_flow(&fid, error).await;
-            }
-        }
 
-        return response;
+                eprintln!("[FLOW_DEBUG] Flow 已完成: flow_id={}", fid);
+            }
+
+            // 重新构建响应返回给客户端
+            let response = Response::from_parts(parts, Body::from(body_bytes));
+            return response;
+        } else {
+            // 流式响应或没有 Flow 捕获，直接返回
+            // 估算 Token 使用量（用于统计）
+            let estimated_input_tokens = request
+                .messages
+                .iter()
+                .map(|m| {
+                    let content_len = match &m.content {
+                        Some(c) => message_content_len(c),
+                        None => 0,
+                    };
+                    content_len / 4
+                })
+                .sum::<usize>() as u32;
+            let estimated_output_tokens = if is_success { 100u32 } else { 0u32 };
+
+            if is_success {
+                record_token_usage(
+                    &state,
+                    &ctx,
+                    Some(estimated_input_tokens),
+                    Some(estimated_output_tokens),
+                );
+            }
+
+            // 如果失败，标记 Flow 失败
+            if let Some(fid) = flow_id {
+                if !is_success {
+                    let error = FlowError::new(
+                        FlowErrorType::from_status_code(status_code),
+                        "Request failed",
+                    )
+                    .with_status_code(status_code);
+                    state.flow_monitor.fail_flow(&fid, error).await;
+                }
+            }
+
+            return response;
+        }
     }
 
     // 回退到旧的单凭证模式（仅当选择的 Provider 是 Kiro 时）
@@ -1171,13 +1284,19 @@ pub async fn chat_completions(
     // 启动 Flow 捕获（legacy mode）
     let llm_request = build_llm_request_from_openai(&request, "/v1/chat/completions", &headers);
 
-    // 尝试将 selected_provider 解析为 ProviderType
-    // 如果是自定义 provider ID，则使用 OpenAI 作为默认值
+    // 使用实际的 provider ID 构建 Flow Metadata
     let provider_type = selected_provider
         .parse::<ProviderType>()
         .unwrap_or(ProviderType::OpenAI);
 
-    let flow_metadata = build_flow_metadata(provider_type, None, None, &headers, &ctx.request_id);
+    let flow_metadata = build_flow_metadata(
+        provider_type,
+        Some(&selected_provider),
+        None,
+        None,
+        &headers,
+        &ctx.request_id,
+    );
     let flow_id = state
         .flow_monitor
         .start_flow(llm_request.clone(), flow_metadata.clone())
@@ -1934,12 +2053,25 @@ pub async fn anthropic_messages(
 
         // 尝试将 selected_provider 解析为 ProviderType
         // 如果是自定义 provider ID，则使用 OpenAI 作为默认值
+        // 使用实际的 provider ID 构建 Flow Metadata
         let provider_type = selected_provider
             .parse::<ProviderType>()
             .unwrap_or(ProviderType::OpenAI);
 
+        // 从凭证名称中提取 Provider 显示名称
+        // 凭证名称格式：Some("[降级] DeepSeek") 或 Some("DeepSeek")
+        let provider_display_name = cred.name.as_ref().and_then(|name| {
+            // 去掉 "[降级] " 前缀
+            if name.starts_with("[降级] ") {
+                Some(&name[9..]) // "[降级] " 是 9 个字节
+            } else {
+                Some(name.as_str())
+            }
+        });
+
         let flow_metadata = build_flow_metadata(
             provider_type,
+            provider_display_name, // 使用 Provider 显示名称（如 "DeepSeek"）
             Some(&cred.uuid),
             cred.name.as_deref(),
             &headers,
@@ -2129,13 +2261,19 @@ pub async fn anthropic_messages(
     // 启动 Flow 捕获（legacy mode）
     let llm_request = build_llm_request_from_anthropic(&request, "/v1/messages", &headers);
 
-    // 尝试将 selected_provider 解析为 ProviderType
-    // 如果是自定义 provider ID，则使用 OpenAI 作为默认值
+    // 使用实际的 provider ID 构建 Flow Metadata
     let provider_type = selected_provider
         .parse::<ProviderType>()
         .unwrap_or(ProviderType::OpenAI);
 
-    let flow_metadata = build_flow_metadata(provider_type, None, None, &headers, &ctx.request_id);
+    let flow_metadata = build_flow_metadata(
+        provider_type,
+        Some(&selected_provider),
+        None,
+        None,
+        &headers,
+        &ctx.request_id,
+    );
     let flow_id = state
         .flow_monitor
         .start_flow(llm_request.clone(), flow_metadata.clone())

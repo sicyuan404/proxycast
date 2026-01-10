@@ -212,10 +212,17 @@ impl FlowQueryService {
         page: usize,
         page_size: usize,
     ) -> Result<FlowQueryResult, FileStoreError> {
+        eprintln!(
+            "[QUERY_SERVICE] 开始查询: filter={:?}, sort_by={:?}, page={}, page_size={}",
+            filter, sort_by, page, page_size
+        );
+
         // 先从内存获取
         let memory_flows = {
             let store = self.memory_store.read().await;
-            store.query(&filter)
+            let flows = store.query(&filter);
+            eprintln!("[QUERY_SERVICE] 内存中查询到 {} 条记录", flows.len());
+            flows
         };
 
         // 再从文件获取（如果需要更多数据）
@@ -228,8 +235,14 @@ impl FlowQueryService {
         let needed = page * page_size;
 
         if memory_count < needed {
+            eprintln!(
+                "[QUERY_SERVICE] 内存数据不足，从文件补充: memory_count={}, needed={}",
+                memory_count, needed
+            );
+
             // 从文件存储获取更多数据
             let file_flows = self.file_store.query(&filter, needed * 2, 0)?;
+            eprintln!("[QUERY_SERVICE] 文件中查询到 {} 条记录", file_flows.len());
 
             // 合并并去重（以 ID 为准）
             let memory_ids: std::collections::HashSet<_> =
@@ -241,6 +254,8 @@ impl FlowQueryService {
                 }
             }
         }
+
+        eprintln!("[QUERY_SERVICE] 合并后总记录数: {}", all_flows.len());
 
         // 排序
         Self::sort_flows(&mut all_flows, sort_by, sort_desc);

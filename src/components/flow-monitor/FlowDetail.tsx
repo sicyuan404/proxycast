@@ -383,7 +383,10 @@ function FlowDetailHeader({
       <div className="rounded-lg border bg-card p-4">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <InfoItem label="模型" value={flow.request.model} />
-          <InfoItem label="提供商" value={flow.metadata.provider} />
+          <InfoItem
+            label="提供商"
+            value={flow.metadata.provider_id || flow.metadata.provider}
+          />
           <InfoItem label="类型" value={formatFlowType(flow.flow_type)} />
           <InfoItem
             label="创建时间"

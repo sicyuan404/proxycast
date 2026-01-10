@@ -35,6 +35,12 @@ export function CleanupDialog({
   const [cleanupType, setCleanupType] = useState<CleanupType>("ByTime");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [cleanupResult, setCleanupResult] = useState<{
+    cleaned_count: number;
+    cleaned_files: number;
+    freed_bytes: number;
+  } | null>(null);
 
   // 时间清理选项
   const [retentionDays, setRetentionDays] = useState(7);
@@ -105,19 +111,21 @@ export function CleanupDialog({
 
       const result = await flowMonitorApi.cleanupFlows(request);
 
-      // 显示清理结果
-      const sizeText = formatBytes(result.freed_bytes);
-      alert(
-        `清理完成！\n删除了 ${result.cleaned_count} 条记录\n清理了 ${result.cleaned_files} 个文件\n释放了 ${sizeText} 空间`,
-      );
-
-      onSuccess();
-      onClose();
+      // 保存清理结果并显示成功提示
+      setCleanupResult(result);
+      setShowSuccess(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSuccessClose = () => {
+    setShowSuccess(false);
+    setCleanupResult(null);
+    onSuccess();
+    onClose();
   };
 
   const formatBytes = (bytes: number): string => {
@@ -148,6 +156,105 @@ export function CleanupDialog({
     "ClaudeOAuth",
     "IFlow",
   ];
+
+  // 如果显示成功提示，渲染成功对话框
+  if (showSuccess && cleanupResult) {
+    return (
+      <Modal isOpen={isOpen} onClose={handleSuccessClose} maxWidth="max-w-md">
+        <div className="px-6 py-8">
+          {/* 成功图标 */}
+          <div className="flex justify-center mb-6">
+            <div className="relative">
+              <div className="w-20 h-20 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center">
+                <svg
+                  className="w-10 h-10 text-green-600 dark:text-green-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M5 13l4 4L19 7"
+                  />
+                </svg>
+              </div>
+              {/* 动画圆环 */}
+              <div className="absolute inset-0 w-20 h-20 border-4 border-green-200 dark:border-green-800 rounded-full animate-ping opacity-75"></div>
+            </div>
+          </div>
+
+          {/* 标题 */}
+          <h3 className="text-2xl font-bold text-center mb-2">清理完成！</h3>
+          <p className="text-center text-muted-foreground mb-6">
+            已成功清理日志数据
+          </p>
+
+          {/* 清理统计 */}
+          <div className="space-y-3 mb-6">
+            <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900/30 rounded-lg flex items-center justify-center">
+                  <Hash className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                </div>
+                <span className="text-sm text-muted-foreground">删除记录</span>
+              </div>
+              <span className="text-lg font-semibold">
+                {cleanupResult.cleaned_count} 条
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-purple-100 dark:bg-purple-900/30 rounded-lg flex items-center justify-center">
+                  <svg
+                    className="w-5 h-5 text-purple-600 dark:text-purple-400"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                    />
+                  </svg>
+                </div>
+                <span className="text-sm text-muted-foreground">清理文件</span>
+              </div>
+              <span className="text-lg font-semibold">
+                {cleanupResult.cleaned_files} 个
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between p-4 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-lg border border-green-200 dark:border-green-800">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-green-100 dark:bg-green-900/50 rounded-lg flex items-center justify-center">
+                  <HardDrive className="w-5 h-5 text-green-600 dark:text-green-400" />
+                </div>
+                <span className="text-sm font-medium text-green-900 dark:text-green-100">
+                  释放空间
+                </span>
+              </div>
+              <span className="text-lg font-bold text-green-600 dark:text-green-400">
+                {formatBytes(cleanupResult.freed_bytes)}
+              </span>
+            </div>
+          </div>
+
+          {/* 确认按钮 */}
+          <button
+            onClick={handleSuccessClose}
+            className="w-full py-3 bg-primary hover:bg-primary/90 text-white font-medium rounded-lg transition-colors"
+          >
+            完成
+          </button>
+        </div>
+      </Modal>
+    );
+  }
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} maxWidth="max-w-2xl">

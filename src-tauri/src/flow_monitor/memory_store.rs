@@ -394,19 +394,28 @@ impl FlowMemoryStore {
     pub fn add(&mut self, flow: LLMFlow) {
         let id = flow.id.clone();
 
+        eprintln!(
+            "[MEMORY_STORE] 添加 Flow: id={}, model={}, state={:?}",
+            id, flow.request.model, flow.state
+        );
+
         // 如果已存在，先移除旧的
         if self.flows.contains_key(&id) {
             self.ordered_ids.retain(|i| i != &id);
+            eprintln!("[MEMORY_STORE] 移除旧的 Flow: id={}", id);
         }
 
         // 检查是否需要驱逐
         while self.flows.len() >= self.max_size {
+            eprintln!("[MEMORY_STORE] 缓存已满，驱逐最旧的 Flow");
             self.evict_oldest();
         }
 
         // 添加新 Flow
         self.flows.insert(id.clone(), Arc::new(RwLock::new(flow)));
-        self.ordered_ids.push_back(id);
+        self.ordered_ids.push_back(id.clone());
+
+        eprintln!("[MEMORY_STORE] Flow 已添加，当前数量: {}", self.flows.len());
     }
 
     /// 获取 Flow

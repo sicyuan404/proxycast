@@ -1052,6 +1052,10 @@ impl FlowMonitor {
 
         // 检查是否应该监控
         if !config.should_monitor(&request.model, &request.path) {
+            eprintln!(
+                "[FLOW_MONITOR] 跳过监控: model={}, path={}",
+                request.model, request.path
+            );
             return None;
         }
 
@@ -1063,6 +1067,11 @@ impl FlowMonitor {
 
         // 生成唯一 ID
         let flow_id = Uuid::new_v4().to_string();
+
+        eprintln!(
+            "[FLOW_MONITOR] 创建新 Flow: id={}, model={}, provider={:?}",
+            flow_id, request.model, metadata.provider
+        );
 
         // 确定 Flow 类型
         let flow_type = Self::determine_flow_type(&request.path);
@@ -1081,6 +1090,7 @@ impl FlowMonitor {
         {
             let mut active = self.active_flows.write().await;
             active.insert(flow_id.clone(), active_flow);
+            eprintln!("[FLOW_MONITOR] 活跃 Flow 数量: {}", active.len());
         }
 
         // 发送事件
@@ -1172,6 +1182,12 @@ impl FlowMonitor {
     /// - `flow_id`: Flow ID
     /// - `response`: LLM 响应（如果是非流式响应）
     pub async fn complete_flow(&self, flow_id: &str, response: Option<LLMResponse>) {
+        eprintln!(
+            "[FLOW_MONITOR] 准备完成 Flow: id={}, has_response={}",
+            flow_id,
+            response.is_some()
+        );
+
         let mut active = self.active_flows.write().await;
 
         if let Some(mut active_flow) = active.remove(flow_id) {
@@ -1185,11 +1201,16 @@ impl FlowMonitor {
             };
 
             // 更新 Flow
-            active_flow.flow.response = final_response;
+            active_flow.flow.response = final_response.clone();
             active_flow.flow.state = FlowState::Completed;
             active_flow.flow.timestamps.response_end = Some(now);
             active_flow.flow.timestamps.calculate_duration();
             active_flow.flow.timestamps.calculate_ttfb();
+
+            eprintln!(
+                "[FLOW_MONITOR] Flow 状态更新: id={}, state={:?}, duration_ms={}",
+                flow_id, active_flow.flow.state, active_flow.flow.timestamps.duration_ms
+            );
 
             // 检查阈值
             let threshold_result = self.check_threshold(&active_flow.flow).await;
@@ -1198,13 +1219,23 @@ impl FlowMonitor {
             {
                 let mut store = self.memory_store.write().await;
                 store.add(active_flow.flow.clone());
+                eprintln!(
+                    "[FLOW_MONITOR] 已保存到内存存储: id={}, 内存中 Flow 数量={}",
+                    flow_id,
+                    store.len()
+                );
             }
 
             // 保存到文件存储
             if let Some(ref file_store) = self.file_store {
                 if let Err(e) = file_store.write(&active_flow.flow) {
                     tracing::error!("保存 Flow 到文件失败: {}", e);
+                    eprintln!("[FLOW_MONITOR] 保存到文件失败: id={}, error={}", flow_id, e);
+                } else {
+                    eprintln!("[FLOW_MONITOR] 已保存到文件存储: id={}", flow_id);
                 }
+            } else {
+                eprintln!("[FLOW_MONITOR] 文件存储未启用");
             }
 
             // 发送完成事件
@@ -1225,6 +1256,10 @@ impl FlowMonitor {
                 self.check_threshold_notifications(&active_flow.flow, &threshold_result)
                     .await;
             }
+
+            eprintln!("[FLOW_MONITOR] Flow 完成处理完毕: id={}", flow_id);
+        } else {
+            eprintln!("[FLOW_MONITOR] 警告: 未找到活跃 Flow: id={}", flow_id);
         }
     }
 

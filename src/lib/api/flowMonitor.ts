@@ -333,6 +333,7 @@ export interface RoutingInfo {
  */
 export interface FlowMetadata {
   provider: ProviderType;
+  provider_id?: string; // 实际的 provider ID（如 "deepseek", "moonshot" 等）
   credential_id?: string;
   credential_name?: string;
   retry_count: number;

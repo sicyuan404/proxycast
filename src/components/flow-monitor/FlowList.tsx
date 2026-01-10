@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
+import * as Select from "@radix-ui/react-select";
 import {
   CheckCircle2,
   XCircle,
@@ -21,6 +22,7 @@ import {
   Activity,
   Bell,
   BellOff,
+  Check,
 } from "lucide-react";
 import {
   flowMonitorApi,
@@ -570,16 +572,59 @@ export function FlowList({
               )}
             </button>
           )}
-          <select
-            className="rounded border bg-background px-2 py-1 text-sm"
+          <Select.Root
             value={sortBy}
-            onChange={(e) => setSortBy(e.target.value as FlowSortBy)}
+            onValueChange={(value) => setSortBy(value as FlowSortBy)}
           >
-            <option value="created_at">按时间</option>
-            <option value="duration">按耗时</option>
-            <option value="total_tokens">按 Token</option>
-            <option value="model">按模型</option>
-          </select>
+            <Select.Trigger className="inline-flex min-w-[120px] items-center justify-between gap-2 rounded-md border border-input bg-background px-3 py-1.5 text-sm shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground focus:outline-none focus:ring-2 focus:ring-ring">
+              <Select.Value />
+              <Select.Icon>
+                <ChevronDown className="h-4 w-4 opacity-50" />
+              </Select.Icon>
+            </Select.Trigger>
+            <Select.Portal>
+              <Select.Content className="relative z-50 min-w-[120px] overflow-hidden rounded-md border border-border bg-white dark:bg-gray-900 text-foreground shadow-lg animate-in fade-in-80 data-[side=bottom]:slide-in-from-top-2 data-[side=top]:slide-in-from-bottom-2">
+                <Select.Viewport className="p-1 bg-white dark:bg-gray-900">
+                  <Select.Item
+                    value="created_at"
+                    className="relative flex cursor-pointer select-none items-center rounded-sm px-8 py-2 text-sm outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50"
+                  >
+                    <Select.ItemIndicator className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
+                      <Check className="h-4 w-4" />
+                    </Select.ItemIndicator>
+                    <Select.ItemText>按时间</Select.ItemText>
+                  </Select.Item>
+                  <Select.Item
+                    value="duration"
+                    className="relative flex cursor-pointer select-none items-center rounded-sm px-8 py-2 text-sm outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50"
+                  >
+                    <Select.ItemIndicator className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
+                      <Check className="h-4 w-4" />
+                    </Select.ItemIndicator>
+                    <Select.ItemText>按耗时</Select.ItemText>
+                  </Select.Item>
+                  <Select.Item
+                    value="total_tokens"
+                    className="relative flex cursor-pointer select-none items-center rounded-sm px-8 py-2 text-sm outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50"
+                  >
+                    <Select.ItemIndicator className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
+                      <Check className="h-4 w-4" />
+                    </Select.ItemIndicator>
+                    <Select.ItemText>按 Token</Select.ItemText>
+                  </Select.Item>
+                  <Select.Item
+                    value="model"
+                    className="relative flex cursor-pointer select-none items-center rounded-sm px-8 py-2 text-sm outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50"
+                  >
+                    <Select.ItemIndicator className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
+                      <Check className="h-4 w-4" />
+                    </Select.ItemIndicator>
+                    <Select.ItemText>按模型</Select.ItemText>
+                  </Select.Item>
+                </Select.Viewport>
+              </Select.Content>
+            </Select.Portal>
+          </Select.Root>
           <button
             onClick={() => setSortDesc(!sortDesc)}
             className="rounded border px-2 py-1 text-sm hover:bg-muted"

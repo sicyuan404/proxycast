@@ -791,6 +791,7 @@ pub async fn create_test_flows(
         // 创建测试元数据
         let metadata = FlowMetadata {
             provider: ProviderType::OpenAI,
+            provider_id: Some("openai".to_string()),
             credential_id: Some(format!("test-cred-{}", i)),
             credential_name: Some(format!("测试凭证 {}", i)),
             retry_count: 0,
