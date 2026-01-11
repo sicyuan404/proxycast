@@ -866,6 +866,28 @@ async fn run_server(
         api_key_service,
     };
 
+    // ========== 开发模式：启动独立的 HTTP 桥接服务器 ==========
+    // 仅在 debug 模式下，启动一个独立的开发服务器在端口 3030
+    // 允许浏览器 dev server 通过 HTTP 调用 Tauri 命令
+    #[cfg(debug_assertions)]
+    {
+        eprintln!("[DevBridge] ===== 准备启动开发桥接服务器 =====");
+        use tokio::sync::RwLock as TokioRwLock;
+        let dev_bridge_state = Arc::new(TokioRwLock::new(state.clone()));
+        eprintln!("[DevBridge] 状态已克隆，准备启动");
+        tokio::spawn(async move {
+            eprintln!("[DevBridge] spawn 任务开始执行");
+            match crate::dev_bridge::DevBridgeServer::start(dev_bridge_state, None).await {
+                Ok(_) => {
+                    eprintln!("[DevBridge] 启动完成");
+                }
+                Err(e) => {
+                    eprintln!("[DevBridge] 启动失败: {}", e);
+                }
+            }
+        });
+    }
+
     // 启动配置文件监控
     let _file_watcher = if let Some(path) = config_path {
         start_config_watcher(
@@ -986,9 +1008,6 @@ async fn run_server(
         .merge(kiro_api_routes)
         // 凭证 API 路由（用于 aster Agent 集成）
         .merge(credentials_api_routes)
-        // 开发模式 HTTP 桥接路由（仅在 debug 模式启用）
-        // 允许浏览器 dev server 通过 HTTP 调用 Tauri 命令
-        .merge(crate::dev_bridge::dev_bridge_routes())
         .layer(DefaultBodyLimit::max(body_limit))
         .with_state(state);
 

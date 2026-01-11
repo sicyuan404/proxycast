@@ -32,7 +32,8 @@ pub async fn handle_command(
 
         "get_default_provider" => {
             let provider = state.default_provider.read().await.clone();
-            Ok(serde_json::json!({ "provider": provider }))
+            // 直接返回字符串值，不是对象
+            Ok(serde_json::json!(provider))
         }
 
         "get_endpoint_providers" => {
@@ -174,6 +175,16 @@ pub async fn handle_command(
                     {"id": "gpt-4o", "object": "model", "owned_by": "openai"},
                     {"id": "gpt-4o-mini", "object": "model", "owned_by": "openai"},
                 ]
+            }))
+        }
+
+        // ========== 网络信息 ==========
+        "get_network_info" => {
+            // 返回网络信息
+            Ok(serde_json::json!({
+                "localhost": "127.0.0.1",
+                "lan_ip": null,
+                "all_ips": ["127.0.0.1"]
             }))
         }
 
