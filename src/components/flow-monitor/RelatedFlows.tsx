@@ -9,7 +9,7 @@
  */
 
 import { useState, useEffect } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { safeInvoke } from "@/lib/dev-bridge";
 import {
   Loader2,
   Link2,
@@ -65,17 +65,23 @@ export function RelatedFlows({
       setLoading(true);
       try {
         // 获取当前 Flow 所属的会话
-        const flowSessions = await invoke<string[]>("get_sessions_for_flow", {
-          flowId: flow.id,
-        });
+        const flowSessions = await safeInvoke<string[]>(
+          "get_sessions_for_flow",
+          {
+            flowId: flow.id,
+          },
+        );
 
         if (flowSessions.length > 0) {
           // 获取会话详情
           const sessionDetails: FlowSession[] = [];
           for (const sessionId of flowSessions) {
-            const session = await invoke<FlowSession | null>("get_session", {
-              sessionId,
-            });
+            const session = await safeInvoke<FlowSession | null>(
+              "get_session",
+              {
+                sessionId,
+              },
+            );
             if (session) {
               sessionDetails.push(session);
             }

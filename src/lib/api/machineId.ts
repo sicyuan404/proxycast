@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { safeInvoke } from "@/lib/dev-bridge";
 
 // Machine ID types matching Rust backend
 
@@ -65,56 +65,56 @@ export const machineIdApi = {
    * 获取当前机器码信息
    */
   async getCurrentMachineId(): Promise<MachineIdInfo> {
-    return invoke("get_current_machine_id");
+    return safeInvoke("get_current_machine_id");
   },
 
   /**
    * 设置新的机器码
    */
   async setMachineId(newId: string): Promise<MachineIdResult> {
-    return invoke("set_machine_id", { newId });
+    return safeInvoke("set_machine_id", { newId });
   },
 
   /**
    * 生成随机机器码
    */
   async generateRandomMachineId(): Promise<string> {
-    return invoke("generate_random_machine_id");
+    return safeInvoke("generate_random_machine_id");
   },
 
   /**
    * 验证机器码格式
    */
   async validateMachineId(machineId: string): Promise<MachineIdValidation> {
-    return invoke("validate_machine_id", { machineId });
+    return safeInvoke("validate_machine_id", { machineId });
   },
 
   /**
    * 检查管理员权限
    */
   async checkAdminPrivileges(): Promise<AdminStatus> {
-    return invoke("check_admin_privileges");
+    return safeInvoke("check_admin_privileges");
   },
 
   /**
    * 获取操作系统类型
    */
   async getOsType(): Promise<string> {
-    return invoke("get_os_type");
+    return safeInvoke("get_os_type");
   },
 
   /**
    * 备份机器码到文件
    */
   async backupMachineIdToFile(filePath: string): Promise<boolean> {
-    return invoke("backup_machine_id_to_file", { filePath });
+    return safeInvoke("backup_machine_id_to_file", { filePath });
   },
 
   /**
    * 从文件恢复机器码
    */
   async restoreMachineIdFromFile(filePath: string): Promise<MachineIdResult> {
-    return invoke("restore_machine_id_from_file", { filePath });
+    return safeInvoke("restore_machine_id_from_file", { filePath });
   },
 
   /**
@@ -126,14 +126,14 @@ export const machineIdApi = {
     machineId: string,
     formatType: "uuid" | "hex32",
   ): Promise<string> {
-    return invoke("format_machine_id", { machineId, formatType });
+    return safeInvoke("format_machine_id", { machineId, formatType });
   },
 
   /**
    * 检测机器码格式
    */
   async detectMachineIdFormat(machineId: string): Promise<string> {
-    return invoke("detect_machine_id_format", { machineId });
+    return safeInvoke("detect_machine_id_format", { machineId });
   },
 
   /**
@@ -145,42 +145,42 @@ export const machineIdApi = {
     machineId: string,
     targetFormat: "uuid" | "hex32",
   ): Promise<string> {
-    return invoke("convert_machine_id_format", { machineId, targetFormat });
+    return safeInvoke("convert_machine_id_format", { machineId, targetFormat });
   },
 
   /**
    * 获取机器码历史记录
    */
   async getMachineIdHistory(): Promise<MachineIdHistory[]> {
-    return invoke("get_machine_id_history");
+    return safeInvoke("get_machine_id_history");
   },
 
   /**
    * 清除机器码覆盖（仅限 macOS）
    */
   async clearMachineIdOverride(): Promise<MachineIdResult> {
-    return invoke("clear_machine_id_override");
+    return safeInvoke("clear_machine_id_override");
   },
 
   /**
    * 复制机器码到剪贴板
    */
   async copyMachineIdToClipboard(machineId: string): Promise<boolean> {
-    return invoke("copy_machine_id_to_clipboard", { machineId });
+    return safeInvoke("copy_machine_id_to_clipboard", { machineId });
   },
 
   /**
    * 从剪贴板粘贴机器码
    */
   async pasteMachineIdFromClipboard(): Promise<string> {
-    return invoke("paste_machine_id_from_clipboard");
+    return safeInvoke("paste_machine_id_from_clipboard");
   },
 
   /**
    * 获取系统信息
    */
   async getSystemInfo(): Promise<SystemInfo> {
-    return invoke("get_system_info");
+    return safeInvoke("get_system_info");
   },
 };
 

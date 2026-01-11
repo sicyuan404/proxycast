@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect } from "react";
-import { listen } from "@tauri-apps/api/event";
+import { safeListen } from "@/lib/dev-bridge";
 import { providerPoolApi } from "@/lib/api/providerPool";
 import { ModeSelector } from "./ModeSelector";
 import { FileImportForm } from "./FileImportForm";
@@ -44,7 +44,7 @@ export function AntigravityForm({
     let unlisten: (() => void) | undefined;
 
     const setupListener = async () => {
-      unlisten = await listen<{ auth_url: string }>(
+      unlisten = await safeListen<{ auth_url: string }>(
         "antigravity-auth-url",
         (event) => {
           setAuthUrl(event.payload.auth_url);

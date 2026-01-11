@@ -1,41 +1,5 @@
-// Import mock invoke directly - Vite alias will replace @tauri-apps/api/core
-// with the mock module in web mode
-import { invoke as baseInvoke } from "@tauri-apps/api/core";
-import { invokeViaHttp, isDevBridgeAvailable } from "@/lib/dev-bridge";
-
-// Safe Tauri invoke wrapper for web mode compatibility
-// 支持三种模式：Tauri IPC → HTTP Bridge → Mock
-const safeInvoke = async (cmd: string, args?: any): Promise<any> => {
-  // 1. 优先使用 Tauri IPC (生产环境或 Tauri webview 可用时)
-  if (
-    typeof window !== "undefined" &&
-    (window as any).__TAURI__?.core?.invoke
-  ) {
-    return (window as any).__TAURI__.core.invoke(cmd, args);
-  }
-
-  // Legacy check for older Tauri versions
-  if (typeof window !== "undefined" && (window as any).__TAURI__?.invoke) {
-    return (window as any).__TAURI__.invoke(cmd, args);
-  }
-
-  // 2. Dev 模式下尝试 HTTP 桥接（浏览器环境，Tauri 后端在运行）
-  if (isDevBridgeAvailable()) {
-    try {
-      console.log(`[DevBridge] 尝试 HTTP 桥接: ${cmd}`);
-      const result = await invokeViaHttp(cmd, args);
-      console.log(`[DevBridge] HTTP 桥接成功: ${cmd}`);
-      return result;
-    } catch (e) {
-      console.warn(`[DevBridge] HTTP 桥接失败: ${cmd}`, e);
-      // 继续尝试 mock
-    }
-  }
-
-  // 3. Fallback 到 mock（Vite alias 会替换 @tauri-apps 导入）
-  console.log(`[DevBridge] 使用 mock: ${cmd}`);
-  return baseInvoke(cmd, args);
-};
+// 使用共享的 safeInvoke
+import { safeInvoke } from "@/lib/dev-bridge";
 
 export interface ServerStatus {
   running: boolean;

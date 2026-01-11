@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { safeInvoke } from "@/lib/dev-bridge";
 import {
   Wifi,
   WifiOff,
@@ -35,11 +35,13 @@ export function WebSocketStatus() {
 
   const fetchStatus = async () => {
     try {
-      const wsStatus = await invoke<WsServiceStatus>("get_websocket_status");
+      const wsStatus = await safeInvoke<WsServiceStatus>(
+        "get_websocket_status",
+      );
       setStatus(wsStatus);
 
       if (wsStatus.active_connections > 0) {
-        const wsConnections = await invoke<WsConnectionInfo[]>(
+        const wsConnections = await safeInvoke<WsConnectionInfo[]>(
           "get_websocket_connections",
         );
         setConnections(wsConnections);

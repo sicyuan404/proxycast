@@ -6,7 +6,7 @@
  * @module lib/connection-api
  */
 
-import { invoke } from "@tauri-apps/api/core";
+import { safeInvoke } from "@/lib/dev-bridge";
 
 /**
  * 连接类型
@@ -100,7 +100,7 @@ export interface ConnectionResponse {
  * 获取所有可用连接
  */
 export async function listConnections(): Promise<ConnectionListEntry[]> {
-  return invoke<ConnectionListEntry[]>("connection_list");
+  return safeInvoke<ConnectionListEntry[]>("connection_list");
 }
 
 /**
@@ -109,7 +109,7 @@ export async function listConnections(): Promise<ConnectionListEntry[]> {
 export async function addConnection(
   request: AddConnectionRequest,
 ): Promise<ConnectionResponse> {
-  return invoke<ConnectionResponse>("connection_add", { request });
+  return safeInvoke<ConnectionResponse>("connection_add", { request });
 }
 
 /**
@@ -119,7 +119,7 @@ export async function updateConnection(
   name: string,
   config: ConnectionConfig,
 ): Promise<ConnectionResponse> {
-  return invoke<ConnectionResponse>("connection_update", {
+  return safeInvoke<ConnectionResponse>("connection_update", {
     request: { name, config },
   });
 }
@@ -130,7 +130,7 @@ export async function updateConnection(
 export async function deleteConnection(
   name: string,
 ): Promise<ConnectionResponse> {
-  return invoke<ConnectionResponse>("connection_delete", { name });
+  return safeInvoke<ConnectionResponse>("connection_delete", { name });
 }
 
 /**
@@ -139,21 +139,21 @@ export async function deleteConnection(
 export async function getConnection(
   name: string,
 ): Promise<ConnectionConfig | null> {
-  return invoke<ConnectionConfig | null>("connection_get", { name });
+  return safeInvoke<ConnectionConfig | null>("connection_get", { name });
 }
 
 /**
  * 获取配置文件路径
  */
 export async function getConnectionConfigPath(): Promise<string> {
-  return invoke<string>("connection_get_config_path");
+  return safeInvoke<string>("connection_get_config_path");
 }
 
 /**
  * 获取原始配置内容
  */
 export async function getRawConnectionConfig(): Promise<string> {
-  return invoke<string>("connection_get_raw_config");
+  return safeInvoke<string>("connection_get_raw_config");
 }
 
 /**
@@ -162,7 +162,9 @@ export async function getRawConnectionConfig(): Promise<string> {
 export async function saveRawConnectionConfig(
   content: string,
 ): Promise<ConnectionResponse> {
-  return invoke<ConnectionResponse>("connection_save_raw_config", { content });
+  return safeInvoke<ConnectionResponse>("connection_save_raw_config", {
+    content,
+  });
 }
 
 /**
@@ -171,7 +173,7 @@ export async function saveRawConnectionConfig(
 export async function testConnection(
   name: string,
 ): Promise<ConnectionResponse> {
-  return invoke<ConnectionResponse>("connection_test", { name });
+  return safeInvoke<ConnectionResponse>("connection_test", { name });
 }
 
 /**
@@ -180,7 +182,7 @@ export async function testConnection(
 export async function importSSHHost(
   hostName: string,
 ): Promise<ConnectionResponse> {
-  return invoke<ConnectionResponse>("connection_import_ssh_host", {
+  return safeInvoke<ConnectionResponse>("connection_import_ssh_host", {
     host_name: hostName,
   });
 }

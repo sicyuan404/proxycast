@@ -27,8 +27,8 @@
  * ```
  */
 
-import { invoke } from "@tauri-apps/api/core";
-import { listen, UnlistenFn } from "@tauri-apps/api/event";
+import { safeInvoke, safeListen } from "@/lib/dev-bridge";
+import type { UnlistenFn } from "@tauri-apps/api/event";
 
 // ============================================================================
 // 类型定义
@@ -97,7 +97,7 @@ export const TERMINAL_STATUS_EVENT = "terminal:status";
  * @returns 会话 ID
  */
 export async function createTerminalSession(cwd?: string): Promise<string> {
-  const response = await invoke<CreateSessionResponse>(
+  const response = await safeInvoke<CreateSessionResponse>(
     "terminal_create_session",
     { cwd },
   );
@@ -119,7 +119,7 @@ export async function writeToTerminal(
   const bytes = encoder.encode(data);
   const base64 = btoa(String.fromCharCode(...bytes));
 
-  await invoke("terminal_write", {
+  await safeInvoke("terminal_write", {
     sessionId,
     data: base64,
   });
@@ -135,7 +135,7 @@ export async function writeToTerminalRaw(
   sessionId: string,
   data: string,
 ): Promise<void> {
-  await invoke("terminal_write", {
+  await safeInvoke("terminal_write", {
     sessionId,
     data,
   });
@@ -153,7 +153,7 @@ export async function resizeTerminal(
   rows: number,
   cols: number,
 ): Promise<void> {
-  await invoke("terminal_resize", {
+  await safeInvoke("terminal_resize", {
     sessionId,
     rows,
     cols,
@@ -166,7 +166,7 @@ export async function resizeTerminal(
  * @param sessionId - 会话 ID
  */
 export async function closeTerminal(sessionId: string): Promise<void> {
-  await invoke("terminal_close", {
+  await safeInvoke("terminal_close", {
     sessionId,
   });
 }
@@ -177,7 +177,7 @@ export async function closeTerminal(sessionId: string): Promise<void> {
  * @returns 会话元数据列表
  */
 export async function listTerminalSessions(): Promise<SessionMetadata[]> {
-  return invoke<SessionMetadata[]>("terminal_list_sessions");
+  return safeInvoke<SessionMetadata[]>("terminal_list_sessions");
 }
 
 /**
@@ -189,7 +189,7 @@ export async function listTerminalSessions(): Promise<SessionMetadata[]> {
 export async function getTerminalSession(
   sessionId: string,
 ): Promise<SessionMetadata | null> {
-  return invoke<SessionMetadata | null>("terminal_get_session", {
+  return safeInvoke<SessionMetadata | null>("terminal_get_session", {
     sessionId,
   });
 }
@@ -207,7 +207,7 @@ export async function getTerminalSession(
 export async function onTerminalOutput(
   callback: (event: TerminalOutputEvent) => void,
 ): Promise<UnlistenFn> {
-  return listen<TerminalOutputEvent>(TERMINAL_OUTPUT_EVENT, (event) => {
+  return safeListen<TerminalOutputEvent>(TERMINAL_OUTPUT_EVENT, (event) => {
     callback(event.payload);
   });
 }
@@ -221,7 +221,7 @@ export async function onTerminalOutput(
 export async function onTerminalStatus(
   callback: (event: TerminalStatusEvent) => void,
 ): Promise<UnlistenFn> {
-  return listen<TerminalStatusEvent>(TERMINAL_STATUS_EVENT, (event) => {
+  return safeListen<TerminalStatusEvent>(TERMINAL_STATUS_EVENT, (event) => {
     callback(event.payload);
   });
 }
@@ -237,7 +237,7 @@ export async function onSessionOutput(
   sessionId: string,
   callback: (data: Uint8Array) => void,
 ): Promise<UnlistenFn> {
-  return listen<TerminalOutputEvent>(TERMINAL_OUTPUT_EVENT, (event) => {
+  return safeListen<TerminalOutputEvent>(TERMINAL_OUTPUT_EVENT, (event) => {
     if (event.payload.session_id === sessionId) {
       // 解码 Base64 数据
       const binaryString = atob(event.payload.data);
@@ -261,7 +261,7 @@ export async function onSessionStatus(
   sessionId: string,
   callback: (event: TerminalStatusEvent) => void,
 ): Promise<UnlistenFn> {
-  return listen<TerminalStatusEvent>(TERMINAL_STATUS_EVENT, (event) => {
+  return safeListen<TerminalStatusEvent>(TERMINAL_STATUS_EVENT, (event) => {
     if (event.payload.session_id === sessionId) {
       callback(event.payload);
     }

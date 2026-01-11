@@ -7,7 +7,7 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { safeInvoke } from "@/lib/dev-bridge";
 import type { RelayInfo } from "./useDeepLink";
 import {
   showRegistryLoadError,
@@ -77,7 +77,7 @@ export function useRelayRegistry(): UseRelayRegistryReturn {
    */
   const loadProviders = useCallback(async () => {
     try {
-      const list = await invoke<RelayInfo[]>("list_relay_providers");
+      const list = await safeInvoke<RelayInfo[]>("list_relay_providers");
       setProviders(list);
       setError(null);
     } catch (err) {
@@ -100,7 +100,7 @@ export function useRelayRegistry(): UseRelayRegistryReturn {
 
     try {
       // 调用后端刷新注册表
-      const count = await invoke<number>("refresh_relay_registry");
+      const count = await safeInvoke<number>("refresh_relay_registry");
       console.log(`[useRelayRegistry] 注册表已刷新，共 ${count} 个中转商`);
 
       // 重新加载列表

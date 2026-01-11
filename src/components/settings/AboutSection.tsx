@@ -5,7 +5,7 @@ import {
   CheckCircle2,
   AlertCircle,
 } from "lucide-react";
-import { invoke } from "@tauri-apps/api/core";
+import { safeInvoke } from "@/lib/dev-bridge";
 import { ProviderIcon } from "@/icons/providers";
 
 interface VersionInfo {
@@ -49,7 +49,7 @@ export function AboutSection() {
     const loadCurrentVersion = async () => {
       try {
         // check_for_updates 会返回当前版本号
-        const result = await invoke<VersionInfo>("check_for_updates");
+        const result = await safeInvoke<VersionInfo>("check_for_updates");
         setVersionInfo((prev) => ({
           ...prev,
           current: result.current,
@@ -65,7 +65,7 @@ export function AboutSection() {
   useEffect(() => {
     const loadToolVersions = async () => {
       try {
-        const versions = await invoke<ToolVersion[]>("get_tool_versions");
+        const versions = await safeInvoke<ToolVersion[]>("get_tool_versions");
         setToolVersions(versions);
       } catch (error) {
         console.error("Failed to load tool versions:", error);
@@ -80,7 +80,7 @@ export function AboutSection() {
     setChecking(true);
     setDownloadResult(null);
     try {
-      const result = await invoke<VersionInfo>("check_for_updates");
+      const result = await safeInvoke<VersionInfo>("check_for_updates");
       setVersionInfo(result);
     } catch (error) {
       console.error("Failed to check for updates:", error);
@@ -97,7 +97,7 @@ export function AboutSection() {
     setDownloading(true);
     setDownloadResult(null);
     try {
-      const result = await invoke<DownloadResult>("download_update");
+      const result = await safeInvoke<DownloadResult>("download_update");
       setDownloadResult(result);
 
       if (result.success) {

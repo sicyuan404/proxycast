@@ -11,7 +11,7 @@
  */
 
 import { useState, useEffect } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { safeInvoke } from "@/lib/dev-bridge";
 import { Bug } from "lucide-react";
 
 interface UpdateCheckConfig {
@@ -42,7 +42,7 @@ export function UpdateCheckSettings() {
 
   const loadSettings = async () => {
     try {
-      const result = await invoke<UpdateCheckConfig>(
+      const result = await safeInvoke<UpdateCheckConfig>(
         "get_update_check_settings",
       );
       setSettings(result);
@@ -55,7 +55,7 @@ export function UpdateCheckSettings() {
 
   const saveSettings = async (newSettings: UpdateCheckConfig) => {
     try {
-      await invoke("set_update_check_settings", { settings: newSettings });
+      await safeInvoke("set_update_check_settings", { settings: newSettings });
       setSettings(newSettings);
     } catch (error) {
       console.error("保存更新检查设置失败:", error);
@@ -192,7 +192,7 @@ export function UpdateCheckSettings() {
           <button
             onClick={async () => {
               try {
-                await invoke("test_update_window");
+                await safeInvoke("test_update_window");
               } catch (error) {
                 console.error("测试更新弹窗失败:", error);
               }

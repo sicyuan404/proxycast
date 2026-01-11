@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { safeInvoke } from "@/lib/dev-bridge";
 
 export interface Provider {
   id: string;
@@ -38,32 +38,32 @@ export interface SyncCheckResult {
 
 export const switchApi = {
   getProviders: (appType: AppType): Promise<Provider[]> =>
-    invoke("get_switch_providers", { appType }),
+    safeInvoke("get_switch_providers", { appType }),
 
   getCurrentProvider: (appType: AppType): Promise<Provider | null> =>
-    invoke("get_current_switch_provider", { appType }),
+    safeInvoke("get_current_switch_provider", { appType }),
 
   addProvider: (provider: Provider): Promise<void> =>
-    invoke("add_switch_provider", { provider }),
+    safeInvoke("add_switch_provider", { provider }),
 
   updateProvider: (provider: Provider): Promise<void> =>
-    invoke("update_switch_provider", { provider }),
+    safeInvoke("update_switch_provider", { provider }),
 
   deleteProvider: (appType: AppType, id: string): Promise<void> =>
-    invoke("delete_switch_provider", { appType, id }),
+    safeInvoke("delete_switch_provider", { appType, id }),
 
   switchProvider: (appType: AppType, id: string): Promise<void> =>
-    invoke("switch_provider", { appType, id }),
+    safeInvoke("switch_provider", { appType, id }),
 
   /** 读取当前生效的配置（从实际配置文件读取） */
   readLiveSettings: (appType: AppType): Promise<Record<string, unknown>> =>
-    invoke("read_live_provider_settings", { appType }),
+    safeInvoke("read_live_provider_settings", { appType }),
 
   /** 检查配置同步状态 */
   checkConfigSync: (appType: AppType): Promise<SyncCheckResult> =>
-    invoke("check_config_sync_status", { appType }),
+    safeInvoke("check_config_sync_status", { appType }),
 
   /** 从外部配置同步到 ProxyCast */
   syncFromExternal: (appType: AppType): Promise<string> =>
-    invoke("sync_from_external_config", { appType }),
+    safeInvoke("sync_from_external_config", { appType }),
 };

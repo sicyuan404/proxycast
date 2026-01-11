@@ -7,7 +7,7 @@
  */
 
 import { useState, useEffect } from "react";
-import { listen } from "@tauri-apps/api/event";
+import { safeListen } from "@/lib/dev-bridge";
 import { Cookie, Key, FileJson } from "lucide-react";
 import { providerPoolApi } from "@/lib/api/providerPool";
 import { FileImportForm } from "./FileImportForm";
@@ -47,7 +47,7 @@ export function ClaudeOAuthForm({
     let unlisten: (() => void) | undefined;
 
     const setupListener = async () => {
-      unlisten = await listen<{ auth_url: string }>(
+      unlisten = await safeListen<{ auth_url: string }>(
         "claude-oauth-auth-url",
         (event) => {
           setAuthUrl(event.payload.auth_url);

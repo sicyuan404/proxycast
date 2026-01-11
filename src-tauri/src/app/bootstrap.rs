@@ -20,6 +20,7 @@ use crate::commands::plugin_cmd::PluginManagerState;
 use crate::commands::plugin_install_cmd::PluginInstallerState;
 use crate::commands::provider_pool_cmd::{CredentialSyncServiceState, ProviderPoolServiceState};
 use crate::commands::resilience_cmd::ResilienceConfigState;
+use crate::commands::session_files_cmd::SessionFilesState;
 use crate::commands::skill_cmd::SkillServiceState;
 use crate::commands::terminal_cmd::TerminalManagerState;
 use crate::commands::webview_cmd::{WebviewManagerState, WebviewManagerWrapper};
@@ -148,6 +149,7 @@ pub struct AppStates {
     pub terminal_manager: TerminalManagerState,
     pub webview_manager: WebviewManagerWrapper,
     pub update_check_service: UpdateCheckServiceState,
+    pub session_files: SessionFilesState,
     // 用于 setup hook 的共享实例
     pub shared_stats: Arc<parking_lot::RwLock<telemetry::StatsAggregator>>,
     pub shared_tokens: Arc<parking_lot::RwLock<telemetry::TokenTracker>>,
@@ -238,6 +240,11 @@ pub fn init_states(config: &Config) -> Result<AppStates, String> {
     // 初始化更新检查服务
     let update_check_service_state = UpdateCheckServiceState::new();
 
+    // 初始化会话文件存储
+    let session_files_storage = crate::session_files::SessionFileStorage::new()
+        .map_err(|e| format!("SessionFileStorage 初始化失败: {}", e))?;
+    let session_files_state = SessionFilesState(std::sync::Mutex::new(session_files_storage));
+
     // 初始化全局配置管理器
     let config_path = ConfigManager::default_config_path();
     let global_config_manager = GlobalConfigManager::new(config.clone(), config_path);
@@ -283,6 +290,7 @@ pub fn init_states(config: &Config) -> Result<AppStates, String> {
         terminal_manager: terminal_manager_state,
         webview_manager: webview_manager_state,
         update_check_service: update_check_service_state,
+        session_files: session_files_state,
         shared_stats,
         shared_tokens,
         shared_logger,

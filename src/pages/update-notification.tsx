@@ -12,7 +12,7 @@
 
 import { useEffect, useState, useCallback, type MouseEvent } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { invoke } from "@tauri-apps/api/core";
+import { safeInvoke } from "@/lib/dev-bridge";
 import { open as shellOpen } from "@tauri-apps/plugin-shell";
 import { Download, X, Clock, SkipForward, ExternalLink } from "lucide-react";
 import "./update-notification.css";
@@ -47,7 +47,7 @@ export function UpdateNotificationPage() {
   // 关闭窗口
   const handleClose = useCallback(async () => {
     try {
-      await invoke("close_update_window");
+      await safeInvoke("close_update_window");
     } catch (err) {
       console.error("关闭窗口失败:", err);
       // 备用方案：直接关闭
@@ -80,7 +80,7 @@ export function UpdateNotificationPage() {
   const handleDownload = async () => {
     setDownloading(true);
     try {
-      await invoke("download_update");
+      await safeInvoke("download_update");
       // download_update 成功后会自动关闭窗口并启动安装程序
     } catch (error) {
       console.error("下载更新失败:", error);
@@ -107,7 +107,7 @@ export function UpdateNotificationPage() {
   const handleSkipVersion = async () => {
     if (params.latestVersion) {
       try {
-        await invoke("skip_update_version", {
+        await safeInvoke("skip_update_version", {
           version: params.latestVersion,
         });
         await handleClose();

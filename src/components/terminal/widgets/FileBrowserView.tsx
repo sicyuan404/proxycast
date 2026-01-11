@@ -10,7 +10,7 @@
 
 import React, { memo, useEffect, useState, useCallback } from "react";
 import styled from "styled-components";
-import { invoke } from "@tauri-apps/api/core";
+import { safeInvoke } from "@/lib/dev-bridge";
 import {
   Folder,
   File,
@@ -440,7 +440,7 @@ export const FileBrowserView = memo(function FileBrowserView({
     setPreview(null);
 
     try {
-      const result = await invoke<DirectoryListing>("list_dir", { path });
+      const result = await safeInvoke<DirectoryListing>("list_dir", { path });
       setListing(result);
       setCurrentPath(result.path);
       if (result.error) {
@@ -463,7 +463,7 @@ export const FileBrowserView = memo(function FileBrowserView({
     if (file.isDir) return;
 
     try {
-      const result = await invoke<FilePreview>("read_file_preview_cmd", {
+      const result = await safeInvoke<FilePreview>("read_file_preview_cmd", {
         path: file.path,
         maxSize: 50000, // 50KB
       });
@@ -553,10 +553,10 @@ export const FileBrowserView = memo(function FileBrowserView({
       try {
         if (entryManager.type === EntryManagerType.NewFile) {
           const newPath = `${currentPath}/${value}`;
-          await invoke("create_file", { path: newPath });
+          await safeInvoke("create_file", { path: newPath });
         } else if (entryManager.type === EntryManagerType.NewFolder) {
           const newPath = `${currentPath}/${value}`;
-          await invoke("create_directory", { path: newPath });
+          await safeInvoke("create_directory", { path: newPath });
         } else if (
           entryManager.type === EntryManagerType.Rename &&
           entryManager.targetFile
@@ -564,7 +564,7 @@ export const FileBrowserView = memo(function FileBrowserView({
           const oldPath = entryManager.targetFile.path;
           const parentPath = oldPath.substring(0, oldPath.lastIndexOf("/"));
           const newPath = `${parentPath}/${value}`;
-          await invoke("rename_file", { oldPath, newPath });
+          await safeInvoke("rename_file", { oldPath, newPath });
         }
         refresh();
       } catch (e) {

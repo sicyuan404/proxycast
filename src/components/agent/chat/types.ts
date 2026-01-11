@@ -1,5 +1,5 @@
 import type { ToolCallState, TokenUsage } from "@/lib/api/agent";
-import { invoke } from "@tauri-apps/api/core";
+import { safeInvoke } from "@/lib/dev-bridge";
 
 export interface MessageImage {
   data: string;
@@ -213,7 +213,9 @@ export type ProviderConfigMap = Record<string, SimpleProviderConfig>;
  */
 export async function getProviderConfig(): Promise<ProviderConfigMap> {
   try {
-    const config = await invoke<ProviderConfigMap>("get_all_provider_models");
+    const config = await safeInvoke<ProviderConfigMap>(
+      "get_all_provider_models",
+    );
     return config;
   } catch (error) {
     console.warn("获取模型配置失败，使用默认配置:", error);
@@ -226,7 +228,9 @@ export async function getProviderConfig(): Promise<ProviderConfigMap> {
  */
 export async function getProviderModels(provider: string): Promise<string[]> {
   try {
-    const models = await invoke<string[]>("get_provider_models", { provider });
+    const models = await safeInvoke<string[]>("get_provider_models", {
+      provider,
+    });
     return models;
   } catch (error) {
     console.warn(`获取 ${provider} 模型列表失败:`, error);

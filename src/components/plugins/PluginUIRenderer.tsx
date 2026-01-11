@@ -9,7 +9,7 @@
 
 import React, { useState, useEffect } from "react";
 import { AlertCircle, Package, Loader2, ExternalLink } from "lucide-react";
-import { invoke } from "@tauri-apps/api/core";
+import { safeInvoke } from "@/lib/dev-bridge";
 import { BrowserInterceptorTool } from "@/components/tools/browser-interceptor/BrowserInterceptorTool";
 import { FlowMonitorPage } from "@/pages";
 import { ConfigManagementPage } from "@/components/config/ConfigManagementPage";
@@ -121,7 +121,7 @@ function PluginLauncher({
     setLaunching(true);
     try {
       // 调用后端启动插件
-      await invoke("launch_plugin_ui", { pluginId });
+      await safeInvoke("launch_plugin_ui", { pluginId });
     } catch (err) {
       console.error("启动插件失败:", err);
     } finally {
@@ -271,11 +271,11 @@ export function PluginUIRenderer({
 
       try {
         // 获取插件目录
-        const dir = await invoke<string>("get_plugins_dir");
+        const dir = await safeInvoke<string>("get_plugins_dir");
         setPluginsDir(dir);
 
         // 首先尝试读取插件清单
-        const manifest = await invoke<PluginManifest | null>(
+        const manifest = await safeInvoke<PluginManifest | null>(
           "read_plugin_manifest_cmd",
           {
             pluginId,
@@ -286,13 +286,13 @@ export function PluginUIRenderer({
           setPluginManifest(manifest);
 
           // 检查数据库中是否已注册
-          const installed = await invoke<boolean>("is_plugin_installed", {
+          const installed = await safeInvoke<boolean>("is_plugin_installed", {
             pluginId,
           });
 
           if (installed) {
             // 从数据库获取插件信息
-            const plugins = await invoke<InstalledPlugin[]>(
+            const plugins = await safeInvoke<InstalledPlugin[]>(
               "list_installed_plugins",
             );
             const plugin = plugins.find((p) => p.id === pluginId);

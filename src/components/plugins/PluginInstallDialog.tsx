@@ -6,8 +6,8 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+import { safeInvoke } from "@/lib/dev-bridge";
+import { safeListen } from "@/lib/dev-bridge";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
   FolderOpen,
@@ -120,7 +120,7 @@ export function PluginInstallDialog({
   useEffect(() => {
     if (!isOpen) return;
 
-    const unlisten = listen<InstallProgress>(
+    const unlisten = safeListen<InstallProgress>(
       "plugin-install-progress",
       (event) => {
         setProgress(event.payload);
@@ -163,7 +163,7 @@ export function PluginInstallDialog({
     setResult(null);
 
     try {
-      const installResult = await invoke<InstallResult>(
+      const installResult = await safeInvoke<InstallResult>(
         "install_plugin_from_url",
         { url: currentUrl },
       );
@@ -258,7 +258,7 @@ export function PluginInstallDialog({
     setResult(null);
 
     try {
-      const installResult = await invoke<InstallResult>(
+      const installResult = await safeInvoke<InstallResult>(
         "install_plugin_from_file",
         { filePath },
       );

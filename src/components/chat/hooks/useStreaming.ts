@@ -5,8 +5,8 @@
  */
 
 import { useCallback } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { listen, UnlistenFn } from "@tauri-apps/api/event";
+import { safeInvoke, safeListen } from "@/lib/dev-bridge";
+import type { UnlistenFn } from "@tauri-apps/api/event";
 import { Message } from "../types";
 
 /**
@@ -51,7 +51,7 @@ export function useStreaming() {
 
       try {
         // 监听流式响应事件
-        unlisten = await listen<StreamChunkEvent>(
+        unlisten = await safeListen<StreamChunkEvent>(
           "chat-stream-chunk",
           (event) => {
             if (isAborted) return;
@@ -64,7 +64,7 @@ export function useStreaming() {
         // 调用 Tauri 命令开始流式对话
         // 注意：这里使用现有的 agent_chat_stream 命令
         // 如果需要独立的通用对话命令，可以后续添加
-        await invoke("agent_chat_stream", {
+        await safeInvoke("agent_chat_stream", {
           messages: messages.map((m) => ({
             role: m.role,
             content: m.content,

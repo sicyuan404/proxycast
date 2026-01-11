@@ -17,3 +17,5 @@ export type {
   InvokeResponse,
   BridgeStatus,
 } from "./http-client";
+
+export { safeInvoke, safeListen, safeEmit } from "./safeInvoke";

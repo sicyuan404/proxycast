@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect } from "react";
-import { listen } from "@tauri-apps/api/event";
+import { safeListen } from "@/lib/dev-bridge";
 import { open } from "@tauri-apps/plugin-shell";
 import { providerPoolApi } from "@/lib/api/providerPool";
 import { ModeSelector } from "./ModeSelector";
@@ -49,9 +49,12 @@ export function QwenForm({
     let unlisten: (() => void) | undefined;
 
     const setupListener = async () => {
-      unlisten = await listen<DeviceCodeInfo>("qwen-device-code", (event) => {
-        setDeviceCode(event.payload);
-      });
+      unlisten = await safeListen<DeviceCodeInfo>(
+        "qwen-device-code",
+        (event) => {
+          setDeviceCode(event.payload);
+        },
+      );
     };
 
     setupListener();

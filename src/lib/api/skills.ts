@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { safeInvoke } from "@/lib/dev-bridge";
 
 export interface Skill {
   key: string;
@@ -23,30 +23,30 @@ export type AppType = "claude" | "codex" | "gemini";
 
 export const skillsApi = {
   async getAll(app: AppType = "claude"): Promise<Skill[]> {
-    return invoke("get_skills_for_app", { app });
+    return safeInvoke("get_skills_for_app", { app });
   },
 
   async install(directory: string, app: AppType = "claude"): Promise<boolean> {
-    return invoke("install_skill_for_app", { app, directory });
+    return safeInvoke("install_skill_for_app", { app, directory });
   },
 
   async uninstall(
     directory: string,
     app: AppType = "claude",
   ): Promise<boolean> {
-    return invoke("uninstall_skill_for_app", { app, directory });
+    return safeInvoke("uninstall_skill_for_app", { app, directory });
   },
 
   async getRepos(): Promise<SkillRepo[]> {
-    return invoke("get_skill_repos");
+    return safeInvoke("get_skill_repos");
   },
 
   async addRepo(repo: SkillRepo): Promise<boolean> {
-    return invoke("add_skill_repo", { repo });
+    return safeInvoke("add_skill_repo", { repo });
   },
 
   async removeRepo(owner: string, name: string): Promise<boolean> {
-    return invoke("remove_skill_repo", { owner, name });
+    return safeInvoke("remove_skill_repo", { owner, name });
   },
 
   /**
@@ -58,6 +58,6 @@ export const skillsApi = {
    * @returns 已安装的 Skill 目录名列表
    */
   async getInstalledProxyCastSkills(): Promise<string[]> {
-    return invoke("get_installed_proxycast_skills");
+    return safeInvoke("get_installed_proxycast_skills");
   },
 };

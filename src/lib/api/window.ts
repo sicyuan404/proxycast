@@ -4,7 +4,7 @@
  * 提供窗口大小调整、位置控制等功能
  */
 
-import { invoke } from "@tauri-apps/api/core";
+import { safeInvoke } from "@/lib/dev-bridge";
 
 /**
  * 窗口大小
@@ -34,7 +34,7 @@ export const windowApi = {
    * @returns 当前窗口大小
    */
   async getWindowSize(): Promise<WindowSize> {
-    return invoke("get_window_size");
+    return safeInvoke("get_window_size");
   },
 
   /**
@@ -43,7 +43,7 @@ export const windowApi = {
    * @param size - 新的窗口大小
    */
   async setWindowSize(size: WindowSize): Promise<void> {
-    return invoke("set_window_size", { size });
+    return safeInvoke("set_window_size", { size });
   },
 
   /**
@@ -52,7 +52,7 @@ export const windowApi = {
    * @returns 窗口大小选项列表
    */
   async getWindowSizeOptions(): Promise<WindowSizeOption[]> {
-    return invoke("get_window_size_options");
+    return safeInvoke("get_window_size_options");
   },
 
   /**
@@ -62,7 +62,7 @@ export const windowApi = {
    * @returns 之前的窗口大小（用于恢复）
    */
   async setWindowSizeByOption(optionId: string): Promise<WindowSize> {
-    return invoke("set_window_size_by_option", { optionId });
+    return safeInvoke("set_window_size_by_option", { optionId });
   },
 
   /**
@@ -71,7 +71,7 @@ export const windowApi = {
    * @returns 是否进入了全屏模式
    */
   async toggleFullscreen(): Promise<boolean> {
-    return invoke("toggle_fullscreen");
+    return safeInvoke("toggle_fullscreen");
   },
 
   /**
@@ -80,7 +80,7 @@ export const windowApi = {
    * @returns 是否处于全屏模式
    */
   async isFullscreen(): Promise<boolean> {
-    return invoke("is_fullscreen");
+    return safeInvoke("is_fullscreen");
   },
 
   /**
@@ -89,7 +89,7 @@ export const windowApi = {
    * @returns 之前的窗口大小（用于恢复）
    */
   async resizeForFlowMonitor(): Promise<WindowSize> {
-    return invoke("resize_for_flow_monitor");
+    return safeInvoke("resize_for_flow_monitor");
   },
 
   /**
@@ -98,7 +98,7 @@ export const windowApi = {
    * @param size - 要恢复的窗口大小
    */
   async restoreWindowSize(size: WindowSize): Promise<void> {
-    return invoke("restore_window_size", { size });
+    return safeInvoke("restore_window_size", { size });
   },
 
   /**
@@ -107,14 +107,14 @@ export const windowApi = {
    * @returns 是否切换到了 Flow Monitor 大小
    */
   async toggleWindowSize(): Promise<boolean> {
-    return invoke("toggle_window_size");
+    return safeInvoke("toggle_window_size");
   },
 
   /**
    * 居中窗口
    */
   async centerWindow(): Promise<void> {
-    return invoke("center_window");
+    return safeInvoke("center_window");
   },
 };
 

@@ -5,7 +5,7 @@
  * 支持 Flow 查询、搜索、统计、导出和标注管理。
  */
 
-import { invoke } from "@tauri-apps/api/core";
+import { safeInvoke } from "@/lib/dev-bridge";
 
 // ============================================================================
 // Provider 类型
@@ -725,7 +725,7 @@ export const flowMonitorApi = {
   ): Promise<FlowQueryResult> {
     // 如果有 filter_expression，使用表达式查询
     if (filter.filter_expression) {
-      return invoke("query_flows_with_expression", {
+      return safeInvoke("query_flows_with_expression", {
         request: {
           filter_expr: filter.filter_expression,
           sort_by: sortBy,
@@ -739,7 +739,7 @@ export const flowMonitorApi = {
     // 否则使用普通查询
     // 移除 filter_expression 字段，因为后端不支持
     const { filter_expression: _filterExpr, ...cleanFilter } = filter;
-    return invoke("query_flows", {
+    return safeInvoke("query_flows", {
       request: {
         filter: cleanFilter,
         sort_by: sortBy,
@@ -757,7 +757,7 @@ export const flowMonitorApi = {
    * @returns Flow 详情，如果不存在则返回 null
    */
   async getFlowDetail(id: string): Promise<LLMFlow | null> {
-    return invoke("get_flow_detail", { flowId: id });
+    return safeInvoke("get_flow_detail", { flowId: id });
   },
 
   /**
@@ -771,7 +771,7 @@ export const flowMonitorApi = {
     query: string,
     limit: number = 50,
   ): Promise<FlowSearchResult[]> {
-    return invoke("search_flows", { request: { query, limit } });
+    return safeInvoke("search_flows", { request: { query, limit } });
   },
 
   /**
@@ -781,7 +781,7 @@ export const flowMonitorApi = {
    * @returns 统计信息
    */
   async getFlowStats(filter: FlowFilter = {}): Promise<FlowStats> {
-    return invoke("get_flow_stats", { filter });
+    return safeInvoke("get_flow_stats", { filter });
   },
 
   /**
@@ -792,7 +792,7 @@ export const flowMonitorApi = {
    */
   async exportFlows(options: ExportOptions): Promise<ExportResult> {
     // 后端期望 request: ExportFlowsRequest 格式
-    const response = await invoke<{
+    const response = await safeInvoke<{
       data: string;
       count: number;
       format: ExportFormat;
@@ -832,7 +832,7 @@ export const flowMonitorApi = {
     request: UpdateAnnotationsRequest,
   ): Promise<FlowAnnotations> {
     // 后端期望 request: UpdateAnnotationsRequest { flow_id, annotations }
-    return invoke("update_flow_annotations", {
+    return safeInvoke("update_flow_annotations", {
       request: {
         flow_id: id,
         annotations: {
@@ -854,7 +854,7 @@ export const flowMonitorApi = {
   async cleanupFlows(
     request: CleanupFlowsRequest,
   ): Promise<CleanupFlowsResponse> {
-    return invoke("cleanup_flows", { request });
+    return safeInvoke("cleanup_flows", { request });
   },
 
   /**
@@ -864,7 +864,7 @@ export const flowMonitorApi = {
    * @returns Flow 列表
    */
   async getRecentFlows(limit: number = 20): Promise<LLMFlow[]> {
-    return invoke("get_recent_flows", { limit });
+    return safeInvoke("get_recent_flows", { limit });
   },
 
   /**
@@ -874,7 +874,7 @@ export const flowMonitorApi = {
    * @returns 更新后的收藏状态
    */
   async toggleFlowStar(id: string): Promise<boolean> {
-    return invoke("toggle_flow_starred", { flowId: id });
+    return safeInvoke("toggle_flow_starred", { flowId: id });
   },
 
   /**
@@ -888,7 +888,10 @@ export const flowMonitorApi = {
     // 后端 add_flow_tag 只支持单个标签，需要循环调用
     const results: boolean[] = [];
     for (const tag of tags) {
-      const result = await invoke<boolean>("add_flow_tag", { flowId: id, tag });
+      const result = await safeInvoke<boolean>("add_flow_tag", {
+        flowId: id,
+        tag,
+      });
       results.push(result);
     }
     // 返回添加的标签（假设全部成功）
@@ -905,7 +908,7 @@ export const flowMonitorApi = {
   async removeFlowTags(id: string, tags: string[]): Promise<string[]> {
     // 后端 remove_flow_tag 只支持单个标签，需要循环调用
     for (const tag of tags) {
-      await invoke<boolean>("remove_flow_tag", { flowId: id, tag });
+      await safeInvoke<boolean>("remove_flow_tag", { flowId: id, tag });
     }
     // 返回空数组表示已移除
     return [];
@@ -924,7 +927,7 @@ export const flowMonitorApi = {
   ): Promise<string | null> {
     // 后端是 add_flow_comment，只支持添加评论
     if (comment) {
-      await invoke<boolean>("add_flow_comment", { flowId: id, comment });
+      await safeInvoke<boolean>("add_flow_comment", { flowId: id, comment });
     }
     return comment;
   },
@@ -940,7 +943,7 @@ export const flowMonitorApi = {
     id: string,
     marker: string | null,
   ): Promise<string | null> {
-    await invoke<boolean>("set_flow_marker", { flowId: id, marker });
+    await safeInvoke<boolean>("set_flow_marker", { flowId: id, marker });
     return marker;
   },
 
@@ -950,7 +953,7 @@ export const flowMonitorApi = {
    * @returns 标签列表
    */
   async getAllTags(): Promise<string[]> {
-    return invoke("get_all_flow_tags");
+    return safeInvoke("get_all_flow_tags");
   },
 
   /**
@@ -965,7 +968,7 @@ export const flowMonitorApi = {
     options: Omit<ExportOptions, "filter">,
   ): Promise<ExportResult> {
     // 使用 export_flows 命令，传入 flow_ids 参数
-    const response = await invoke<{
+    const response = await safeInvoke<{
       data: string;
       count: number;
       format: ExportFormat;
@@ -1000,7 +1003,7 @@ export const flowMonitorApi = {
    * @returns 是否删除成功
    */
   async deleteFlow(id: string): Promise<boolean> {
-    return invoke("delete_flow", { id });
+    return safeInvoke("delete_flow", { id });
   },
 
   /**
@@ -1010,7 +1013,7 @@ export const flowMonitorApi = {
    * @returns 删除的数量
    */
   async deleteFlows(ids: string[]): Promise<number> {
-    return invoke("delete_flows", { ids });
+    return safeInvoke("delete_flows", { ids });
   },
 
   /**
@@ -1026,7 +1029,7 @@ export const flowMonitorApi = {
     memory_flow_ids: string[];
     config_enabled: boolean;
   }> {
-    return invoke("get_flow_monitor_debug_info");
+    return safeInvoke("get_flow_monitor_debug_info");
   },
 
   /**
@@ -1036,7 +1039,7 @@ export const flowMonitorApi = {
    * @returns 成功创建的 Flow 数量
    */
   async createTestFlows(count?: number): Promise<number> {
-    return invoke("create_test_flows", { count });
+    return safeInvoke("create_test_flows", { count });
   },
 };
 
@@ -1260,7 +1263,7 @@ export const enhancedStatsApi = {
       start: new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString(),
       end: now.toISOString(),
     };
-    return invoke("get_enhanced_stats", {
+    return safeInvoke("get_enhanced_stats", {
       request: {
         filter,
         time_range: timeRange || defaultTimeRange,
@@ -1286,7 +1289,7 @@ export const enhancedStatsApi = {
       start: new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString(),
       end: now.toISOString(),
     };
-    return invoke("get_request_trend", {
+    return safeInvoke("get_request_trend", {
       request: {
         filter,
         time_range: timeRange || defaultTimeRange,
@@ -1311,7 +1314,7 @@ export const enhancedStatsApi = {
       start: new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString(),
       end: now.toISOString(),
     };
-    return invoke("get_token_distribution", {
+    return safeInvoke("get_token_distribution", {
       request: {
         filter,
         time_range: timeRange || defaultTimeRange,
@@ -1337,7 +1340,7 @@ export const enhancedStatsApi = {
       start: new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString(),
       end: now.toISOString(),
     };
-    return invoke("get_latency_histogram", {
+    return safeInvoke("get_latency_histogram", {
       request: {
         filter,
         time_range: timeRange || defaultTimeRange,
@@ -1364,7 +1367,7 @@ export const enhancedStatsApi = {
       start: new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString(),
       end: now.toISOString(),
     };
-    return invoke("export_stats_report", {
+    return safeInvoke("export_stats_report", {
       request: {
         filter,
         time_range: timeRange || defaultTimeRange,
@@ -1418,7 +1421,7 @@ export const realtimeMonitorApi = {
    * @returns 阈值配置
    */
   async getThresholdConfig(): Promise<ThresholdConfig> {
-    return invoke("get_threshold_config");
+    return safeInvoke("get_threshold_config");
   },
 
   /**
@@ -1427,7 +1430,7 @@ export const realtimeMonitorApi = {
    * @param config - 新的阈值配置
    */
   async updateThresholdConfig(config: ThresholdConfig): Promise<void> {
-    return invoke("update_threshold_config", { config });
+    return safeInvoke("update_threshold_config", { config });
   },
 
   /**
@@ -1436,7 +1439,7 @@ export const realtimeMonitorApi = {
    * @returns 请求速率信息
    */
   async getRequestRate(): Promise<RequestRateResponse> {
-    return invoke("get_request_rate");
+    return safeInvoke("get_request_rate");
   },
 
   /**
@@ -1445,6 +1448,6 @@ export const realtimeMonitorApi = {
    * @param windowSeconds - 时间窗口（秒）
    */
   async setRateWindow(windowSeconds: number): Promise<void> {
-    return invoke("set_rate_window", { windowSeconds });
+    return safeInvoke("set_rate_window", { windowSeconds });
   },
 };

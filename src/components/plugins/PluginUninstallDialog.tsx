@@ -6,7 +6,7 @@
  */
 
 import { useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { safeInvoke } from "@/lib/dev-bridge";
 import { AlertTriangle, Loader2, Trash2 } from "lucide-react";
 import { Modal, ModalBody, ModalFooter } from "@/components/Modal";
 import { Button } from "@/components/ui/button";
@@ -54,7 +54,7 @@ export function PluginUninstallDialog({
     setError(null);
 
     try {
-      await invoke<boolean>("uninstall_plugin", { pluginId: plugin.id });
+      await safeInvoke<boolean>("uninstall_plugin", { pluginId: plugin.id });
       onSuccess();
       // 触发侧边栏刷新事件
       window.dispatchEvent(new CustomEvent("plugin-changed"));

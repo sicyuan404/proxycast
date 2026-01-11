@@ -7,7 +7,7 @@
  * _需求: 3.1_
  */
 
-import { invoke } from "@tauri-apps/api/core";
+import { safeInvoke } from "@/lib/dev-bridge";
 
 /**
  * 插件 UI 信息
@@ -36,7 +36,7 @@ export interface PluginUIInfo {
  * @returns 带有 UI 配置的插件列表
  */
 export async function getPluginsWithUI(): Promise<PluginUIInfo[]> {
-  return invoke<PluginUIInfo[]>("get_plugins_with_ui");
+  return safeInvoke<PluginUIInfo[]>("get_plugins_with_ui");
 }
 
 /**

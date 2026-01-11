@@ -6,7 +6,7 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { safeInvoke } from "@/lib/dev-bridge";
 import {
   Bookmark,
   Trash2,
@@ -109,8 +109,8 @@ export function BookmarkPanel({
       setLoading(true);
       setError(null);
       const [bookmarkList, groupList] = await Promise.all([
-        invoke<FlowBookmark[]>("list_bookmarks", { group: null }),
-        invoke<string[]>("list_bookmark_groups"),
+        safeInvoke<FlowBookmark[]>("list_bookmarks", { group: null }),
+        safeInvoke<string[]>("list_bookmark_groups"),
       ]);
       setBookmarks(bookmarkList);
       setGroups(groupList);
@@ -135,7 +135,7 @@ export function BookmarkPanel({
 
     try {
       setSaving(true);
-      const updated = await invoke<FlowBookmark>("update_bookmark", {
+      const updated = await safeInvoke<FlowBookmark>("update_bookmark", {
         request: {
           bookmark_id: editingBookmark.id,
           name: editName.trim() || null,
@@ -162,7 +162,7 @@ export function BookmarkPanel({
     if (!confirm("确定要删除此书签吗？")) return;
 
     try {
-      await invoke("remove_bookmark", { bookmarkId });
+      await safeInvoke("remove_bookmark", { bookmarkId });
       setBookmarks((prev) => prev.filter((b) => b.id !== bookmarkId));
       setMenuBookmarkId(null);
     } catch (e) {
@@ -175,7 +175,7 @@ export function BookmarkPanel({
   const handleExport = useCallback(async () => {
     try {
       setExporting(true);
-      const data = await invoke<string>("export_bookmarks");
+      const data = await safeInvoke<string>("export_bookmarks");
 
       // 下载文件
       const blob = new Blob([data], { type: "application/json" });
@@ -209,12 +209,15 @@ export function BookmarkPanel({
         try {
           setImporting(true);
           const data = await file.text();
-          const imported = await invoke<FlowBookmark[]>("import_bookmarks", {
-            request: {
-              data,
-              overwrite: false,
-            } as ImportBookmarksRequest,
-          });
+          const imported = await safeInvoke<FlowBookmark[]>(
+            "import_bookmarks",
+            {
+              request: {
+                data,
+                overwrite: false,
+              } as ImportBookmarksRequest,
+            },
+          );
           if (imported.length > 0) {
             await loadBookmarks();
             setError(null);

@@ -9,7 +9,7 @@
 
 import React, { memo, useCallback, useMemo, useEffect, useRef } from "react";
 import styled from "styled-components";
-import { invoke } from "@tauri-apps/api/core";
+import { safeInvoke } from "@/lib/dev-bridge";
 import {
   FilePlus,
   FolderPlus,
@@ -264,7 +264,7 @@ export const FileContextMenu = memo(function FileContextMenu({
   const handleRevealInFinder = useCallback(async () => {
     const targetPath = file?.path || currentPath;
     try {
-      await invoke("reveal_in_finder", { path: targetPath });
+      await safeInvoke("reveal_in_finder", { path: targetPath });
     } catch (e) {
       console.error("[FileContextMenu] 在 Finder 中显示失败:", e);
     }
@@ -275,7 +275,7 @@ export const FileContextMenu = memo(function FileContextMenu({
   const handleOpenWithDefault = useCallback(async () => {
     if (!file || file.isDir) return;
     try {
-      await invoke("open_with_default_app", { path: file.path });
+      await safeInvoke("open_with_default_app", { path: file.path });
     } catch (e) {
       console.error("[FileContextMenu] 打开文件失败:", e);
     }
@@ -303,7 +303,7 @@ export const FileContextMenu = memo(function FileContextMenu({
     }
 
     try {
-      await invoke("delete_file", {
+      await safeInvoke("delete_file", {
         path: file.path,
         recursive: file.isDir,
       });

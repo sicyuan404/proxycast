@@ -4,7 +4,7 @@
  * 提供 Mini/Pro/Max 服务等级的智能路由接口
  */
 
-import { invoke } from "@tauri-apps/api/core";
+import { safeInvoke } from "@/lib/dev-bridge";
 
 // ============================================================================
 // 类型定义
@@ -170,85 +170,85 @@ export const orchestratorApi = {
   // ==================== 初始化 ====================
 
   /** 初始化编排器 */
-  init: (): Promise<void> => invoke("init_orchestrator"),
+  init: (): Promise<void> => safeInvoke("init_orchestrator"),
 
   /** 获取编排器配置 */
   getConfig: (): Promise<OrchestratorConfig> =>
-    invoke("get_orchestrator_config"),
+    safeInvoke("get_orchestrator_config"),
 
   /** 更新编排器配置 */
   updateConfig: (config: OrchestratorConfig): Promise<void> =>
-    invoke("update_orchestrator_config", { config }),
+    safeInvoke("update_orchestrator_config", { config }),
 
   // ==================== 模型池 ====================
 
   /** 获取模型池统计 */
-  getPoolStats: (): Promise<PoolStats> => invoke("get_pool_stats"),
+  getPoolStats: (): Promise<PoolStats> => safeInvoke("get_pool_stats"),
 
   /** 获取指定等级的模型列表 */
   getTierModels: (tier: ServiceTier): Promise<AvailableModel[]> =>
-    invoke("get_tier_models", { tier }),
+    safeInvoke("get_tier_models", { tier }),
 
   /** 获取所有可用模型 */
-  getAllModels: (): Promise<AvailableModel[]> => invoke("get_all_models"),
+  getAllModels: (): Promise<AvailableModel[]> => safeInvoke("get_all_models"),
 
   // ==================== 凭证管理 ====================
 
   /** 更新凭证列表 */
   updateCredentials: (credentials: CredentialInfoRequest[]): Promise<void> =>
-    invoke("update_orchestrator_credentials", { credentials }),
+    safeInvoke("update_orchestrator_credentials", { credentials }),
 
   /** 添加凭证 */
   addCredential: (credential: CredentialInfoRequest): Promise<void> =>
-    invoke("add_orchestrator_credential", { credential }),
+    safeInvoke("add_orchestrator_credential", { credential }),
 
   /** 移除凭证 */
   removeCredential: (credentialId: string): Promise<void> =>
-    invoke("remove_orchestrator_credential", { credentialId }),
+    safeInvoke("remove_orchestrator_credential", { credentialId }),
 
   /** 标记凭证为不健康 */
   markCredentialUnhealthy: (
     modelId: string,
     credentialId: string,
   ): Promise<void> =>
-    invoke("mark_credential_unhealthy", { modelId, credentialId }),
+    safeInvoke("mark_credential_unhealthy", { modelId, credentialId }),
 
   /** 标记凭证为健康 */
   markCredentialHealthy: (credentialId: string): Promise<void> =>
-    invoke("mark_credential_healthy", { credentialId }),
+    safeInvoke("mark_credential_healthy", { credentialId }),
 
   /** 更新凭证负载 */
   updateCredentialLoad: (credentialId: string, load: number): Promise<void> =>
-    invoke("update_credential_load", { credentialId, load }),
+    safeInvoke("update_credential_load", { credentialId, load }),
 
   // ==================== 模型选择 ====================
 
   /** 选择模型 */
   selectModel: (request: SelectionRequest): Promise<SelectionResult> =>
-    invoke("select_model", { request }),
+    safeInvoke("select_model", { request }),
 
   /** 快速选择模型（使用默认配置） */
   quickSelectModel: (): Promise<SelectionResult> =>
-    invoke("quick_select_model"),
+    safeInvoke("quick_select_model"),
 
   /** 为特定任务选择模型 */
   selectModelForTask: (
     tier: ServiceTier,
     task: TaskHint,
   ): Promise<SelectionResult> =>
-    invoke("select_model_for_task", { tier, task }),
+    safeInvoke("select_model_for_task", { tier, task }),
 
   // ==================== 策略 ====================
 
   /** 列出所有可用策略 */
-  listStrategies: (): Promise<StrategyInfo[]> => invoke("list_strategies"),
+  listStrategies: (): Promise<StrategyInfo[]> => safeInvoke("list_strategies"),
 
   /** 获取服务等级列表 */
   listServiceTiers: (): Promise<ServiceTierInfo[]> =>
-    invoke("list_service_tiers"),
+    safeInvoke("list_service_tiers"),
 
   /** 获取任务类型列表 */
-  listTaskHints: (): Promise<TaskHintInfo[]> => invoke("list_task_hints"),
+  listTaskHints: (): Promise<TaskHintInfo[]> => safeInvoke("list_task_hints"),
 };
 
 // ============================================================================

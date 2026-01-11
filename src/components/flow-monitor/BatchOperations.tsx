@@ -5,7 +5,7 @@
  */
 
 import React, { useState, useCallback } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { safeInvoke } from "@/lib/dev-bridge";
 import {
   CheckSquare,
   Square,
@@ -113,7 +113,7 @@ export function BatchOperations({
         setOperating(true);
         setCurrentOp(op);
         setError(null);
-        const result = await invoke<BatchResult>(command, { request });
+        const result = await safeInvoke<BatchResult>(command, { request });
         onOperationComplete?.(result, op);
         onSuccess?.();
         onRefresh?.();
@@ -170,7 +170,7 @@ export function BatchOperations({
       setOperating(true);
       setCurrentOp("export");
       setError(null);
-      const result = await invoke<BatchResult>("batch_export_flows", {
+      const result = await safeInvoke<BatchResult>("batch_export_flows", {
         request: { flow_ids: Array.from(selectedIds), format: exportFormat },
       });
       if (result.export_data) {

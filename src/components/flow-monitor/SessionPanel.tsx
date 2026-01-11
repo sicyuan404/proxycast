@@ -6,7 +6,7 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { safeInvoke } from "@/lib/dev-bridge";
 import {
   FolderOpen,
   Plus,
@@ -110,7 +110,7 @@ export function SessionPanel({
     try {
       setLoading(true);
       setError(null);
-      const result = await invoke<FlowSession[]>("list_sessions", {
+      const result = await safeInvoke<FlowSession[]>("list_sessions", {
         includeArchived: showArchived,
       });
       setSessions(result);
@@ -133,7 +133,7 @@ export function SessionPanel({
 
     try {
       setCreating(true);
-      const session = await invoke<FlowSession>("create_session", {
+      const session = await safeInvoke<FlowSession>("create_session", {
         request: {
           name: createName.trim(),
           description: createDescription.trim() || null,
@@ -158,7 +158,7 @@ export function SessionPanel({
 
     try {
       setSaving(true);
-      await invoke("update_session", {
+      await safeInvoke("update_session", {
         request: {
           session_id: editingSession.id,
           name: editName.trim(),
@@ -188,7 +188,7 @@ export function SessionPanel({
   // 归档会话
   const handleArchive = useCallback(async (sessionId: string) => {
     try {
-      await invoke("archive_session", { sessionId });
+      await safeInvoke("archive_session", { sessionId });
       setSessions((prev) =>
         prev.map((s) => (s.id === sessionId ? { ...s, archived: true } : s)),
       );
@@ -202,7 +202,7 @@ export function SessionPanel({
   // 取消归档会话
   const handleUnarchive = useCallback(async (sessionId: string) => {
     try {
-      await invoke("unarchive_session", { sessionId });
+      await safeInvoke("unarchive_session", { sessionId });
       setSessions((prev) =>
         prev.map((s) => (s.id === sessionId ? { ...s, archived: false } : s)),
       );
@@ -219,7 +219,7 @@ export function SessionPanel({
       if (!confirm("确定要删除此会话吗？此操作不可撤销。")) return;
 
       try {
-        await invoke("delete_session", { sessionId });
+        await safeInvoke("delete_session", { sessionId });
         setSessions((prev) => prev.filter((s) => s.id !== sessionId));
         setMenuSessionId(null);
         if (selectedSessionId === sessionId) {
@@ -237,7 +237,7 @@ export function SessionPanel({
   const handleExport = useCallback(
     async (sessionId: string, format: ExportFormat = "json") => {
       try {
-        const result = await invoke<SessionExportResult>("export_session", {
+        const result = await safeInvoke<SessionExportResult>("export_session", {
           request: {
             session_id: sessionId,
             format,

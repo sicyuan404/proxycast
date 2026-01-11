@@ -11,7 +11,7 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { listen } from "@tauri-apps/api/event";
+import { safeListen } from "@/lib/dev-bridge";
 import { providerPoolApi } from "@/lib/api/providerPool";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -62,7 +62,7 @@ export function ClaudeFormStandalone({
     let unlisten: (() => void) | undefined;
 
     const setupListener = async () => {
-      unlisten = await listen<{ auth_url: string }>(
+      unlisten = await safeListen<{ auth_url: string }>(
         "claude-oauth-auth-url",
         (event) => {
           setAuthUrl(event.payload.auth_url);

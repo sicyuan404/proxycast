@@ -6,7 +6,7 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { safeInvoke } from "@/lib/dev-bridge";
 import {
   FolderOpen,
   ArrowLeft,
@@ -103,7 +103,7 @@ export function SessionDetail({
 
       // 逐个获取 Flow 详情
       const flowPromises = session.flow_ids.map((id) =>
-        invoke<LLMFlow | null>("get_flow_detail", { flowId: id }),
+        safeInvoke<LLMFlow | null>("get_flow_detail", { flowId: id }),
       );
       const results = await Promise.all(flowPromises);
       const validFlows = results.filter((f): f is LLMFlow => f !== null);
@@ -127,7 +127,7 @@ export function SessionDetail({
 
     try {
       setSaving(true);
-      await invoke("update_session", {
+      await safeInvoke("update_session", {
         request: {
           session_id: session.id,
           name: editName.trim(),
@@ -160,7 +160,7 @@ export function SessionDetail({
     try {
       setSearching(true);
       // 使用查询 API 搜索 Flow
-      const result = await invoke<{ flows: LLMFlow[] }>("query_flows", {
+      const result = await safeInvoke<{ flows: LLMFlow[] }>("query_flows", {
         request: {
           filter: {
             content_search: searchQuery.trim(),
@@ -188,7 +188,7 @@ export function SessionDetail({
     async (flowId: string) => {
       try {
         setAddingFlowId(flowId);
-        await invoke("add_flow_to_session", {
+        await safeInvoke("add_flow_to_session", {
           sessionId: session.id,
           flowId,
         });
@@ -202,7 +202,7 @@ export function SessionDetail({
         onSessionUpdate?.(updatedSession);
 
         // 获取新添加的 Flow 详情
-        const flow = await invoke<LLMFlow | null>("get_flow_detail", {
+        const flow = await safeInvoke<LLMFlow | null>("get_flow_detail", {
           flowId,
         });
         if (flow) {
@@ -226,7 +226,7 @@ export function SessionDetail({
     async (flowId: string) => {
       try {
         setRemovingFlowId(flowId);
-        await invoke("remove_flow_from_session", {
+        await safeInvoke("remove_flow_from_session", {
           sessionId: session.id,
           flowId,
         });
@@ -253,9 +253,9 @@ export function SessionDetail({
   const handleToggleArchive = useCallback(async () => {
     try {
       if (session.archived) {
-        await invoke("unarchive_session", { sessionId: session.id });
+        await safeInvoke("unarchive_session", { sessionId: session.id });
       } else {
-        await invoke("archive_session", { sessionId: session.id });
+        await safeInvoke("archive_session", { sessionId: session.id });
       }
       const updatedSession = { ...session, archived: !session.archived };
       setSession(updatedSession);
@@ -271,7 +271,7 @@ export function SessionDetail({
     if (!confirm("确定要删除此会话吗？此操作不可撤销。")) return;
 
     try {
-      await invoke("delete_session", { sessionId: session.id });
+      await safeInvoke("delete_session", { sessionId: session.id });
       onSessionDelete?.();
     } catch (e) {
       console.error("删除会话失败:", e);
@@ -283,7 +283,7 @@ export function SessionDetail({
   const handleExport = useCallback(
     async (format: ExportFormat = "json") => {
       try {
-        const result = await invoke<SessionExportResult>("export_session", {
+        const result = await safeInvoke<SessionExportResult>("export_session", {
           request: {
             session_id: session.id,
             format,

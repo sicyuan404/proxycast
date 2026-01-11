@@ -10,8 +10,9 @@
 
 import { memo, useEffect, useRef, useState, useCallback } from "react";
 import styled from "styled-components";
-import { invoke } from "@tauri-apps/api/core";
-import { listen, UnlistenFn } from "@tauri-apps/api/event";
+import { safeInvoke } from "@/lib/dev-bridge";
+import { safeListen } from "@/lib/dev-bridge";
+import type { UnlistenFn } from "@tauri-apps/api/event";
 import * as Plot from "@observablehq/plot";
 import dayjs from "dayjs";
 import { SysinfoDataPoint, PlotType, TimeSeriesMeta } from "./types";
@@ -276,7 +277,7 @@ export const SysinfoView = memo(function SysinfoView({
     const setup = async () => {
       try {
         // 监听 sysinfo 事件
-        unlisten = await listen<SysinfoDataPoint>("sysinfo", (event) => {
+        unlisten = await safeListen<SysinfoDataPoint>("sysinfo", (event) => {
           if (mounted) {
             addDataPoint(event.payload);
             setLoading(false);
@@ -284,7 +285,7 @@ export const SysinfoView = memo(function SysinfoView({
         });
 
         // 开始订阅
-        await invoke("subscribe_sysinfo");
+        await safeInvoke("subscribe_sysinfo");
       } catch (e) {
         console.error("订阅系统信息失败:", e);
         if (mounted) {
@@ -302,7 +303,7 @@ export const SysinfoView = memo(function SysinfoView({
         unlisten();
       }
       // 取消订阅
-      invoke("unsubscribe_sysinfo").catch(console.error);
+      safeInvoke("unsubscribe_sysinfo").catch(console.error);
     };
   }, [addDataPoint]);
 

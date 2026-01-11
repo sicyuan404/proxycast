@@ -6,7 +6,7 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { safeInvoke } from "@/lib/dev-bridge";
 import {
   X,
   Play,
@@ -73,9 +73,12 @@ export function InterceptEditor({
     try {
       setLoading(true);
       setError(null);
-      const flow = await invoke<InterceptedFlow | null>("intercept_get_flow", {
-        flowId,
-      });
+      const flow = await safeInvoke<InterceptedFlow | null>(
+        "intercept_get_flow",
+        {
+          flowId,
+        },
+      );
       if (flow) {
         setInterceptedFlow(flow);
         // 初始化编辑内容
@@ -152,7 +155,7 @@ export function InterceptEditor({
         }
       }
 
-      await invoke("intercept_continue", {
+      await safeInvoke("intercept_continue", {
         flowId: interceptedFlow.flow_id,
         modifiedRequest,
         modifiedResponse,
@@ -176,7 +179,7 @@ export function InterceptEditor({
       setCancelling(true);
       setError(null);
 
-      await invoke("intercept_cancel", {
+      await safeInvoke("intercept_cancel", {
         flowId: interceptedFlow.flow_id,
       });
 

@@ -5,8 +5,8 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { listen, UnlistenFn } from "@tauri-apps/api/event";
+import { safeInvoke, safeListen } from "@/lib/dev-bridge";
+import type { UnlistenFn } from "@tauri-apps/api/event";
 import { surfaceManager, SurfaceManager } from "./SurfaceManager";
 import { initPluginUI } from "./index";
 import type {
@@ -79,14 +79,14 @@ export function usePluginUI(options: UsePluginUIOptions): UsePluginUIResult {
 
     const setupListener = async () => {
       try {
-        unlisten = await listen<{ pluginId: string; message: ServerMessage }>(
-          "plugin-ui-message",
-          (event) => {
-            if (event.payload.pluginId === pluginId) {
-              manager.processMessage(pluginId, event.payload.message);
-            }
-          },
-        );
+        unlisten = await safeListen<{
+          pluginId: string;
+          message: ServerMessage;
+        }>("plugin-ui-message", (event) => {
+          if (event.payload.pluginId === pluginId) {
+            manager.processMessage(pluginId, event.payload.message);
+          }
+        });
       } catch (err) {
         console.error("[usePluginUI] 监听事件失败:", err);
       }
@@ -108,7 +108,7 @@ export function usePluginUI(options: UsePluginUIOptions): UsePluginUIResult {
 
     try {
       // 调用 Rust 获取插件的初始 UI 定义
-      const messages = await invoke<ServerMessage[]>("get_plugin_ui", {
+      const messages = await safeInvoke<ServerMessage[]>("get_plugin_ui", {
         pluginId,
       });
 
@@ -150,7 +150,7 @@ export function usePluginUI(options: UsePluginUIOptions): UsePluginUIResult {
         }
 
         // 发送操作到 Rust
-        const responses = await invoke<ServerMessage[]>(
+        const responses = await safeInvoke<ServerMessage[]>(
           "handle_plugin_action",
           {
             pluginId,

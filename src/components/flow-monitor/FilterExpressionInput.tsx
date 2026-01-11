@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { safeInvoke } from "@/lib/dev-bridge";
 import { Search, AlertCircle, CheckCircle2, HelpCircle, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -139,7 +139,7 @@ export function FilterExpressionInput({
       }
 
       try {
-        const result = await invoke<ParseFilterResult>("parse_filter", {
+        const result = await safeInvoke<ParseFilterResult>("parse_filter", {
           expression: expr,
         });
 

@@ -10,7 +10,7 @@
 
 import { useState, useEffect } from "react";
 import { Copy, Check, RefreshCw, Download, Loader2 } from "lucide-react";
-import { listen } from "@tauri-apps/api/event";
+import { safeListen } from "@/lib/dev-bridge";
 import { installPlaywright } from "@/lib/api/providerPool";
 
 interface PlaywrightInstallGuideProps {
@@ -45,7 +45,7 @@ export function PlaywrightInstallGuide({
 
   // 监听安装进度事件
   useEffect(() => {
-    const unlisten = listen<InstallProgress>(
+    const unlisten = safeListen<InstallProgress>(
       "playwright-install-progress",
       (event) => {
         setProgress(event.payload.message);

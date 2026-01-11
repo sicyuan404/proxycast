@@ -4,8 +4,9 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import styled from "styled-components";
-import { invoke } from "@tauri-apps/api/core";
-import { listen, UnlistenFn } from "@tauri-apps/api/event";
+import { safeInvoke } from "@/lib/dev-bridge";
+import { safeListen } from "@/lib/dev-bridge";
+import type { UnlistenFn } from "@tauri-apps/api/event";
 import { Check, X, Loader2 } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { onboardingPlugins } from "../constants";
@@ -200,7 +201,7 @@ export function InstallProgressStep({
 
       try {
         // 监听当前插件的进度
-        unlisten = await listen<InstallProgress>(
+        unlisten = await safeListen<InstallProgress>(
           "plugin-install-progress",
           (event) => {
             setInstallStates((prev) =>
@@ -233,9 +234,12 @@ export function InstallProgressStep({
         );
 
         // 调用安装 API
-        const result = await invoke<InstallResult>("install_plugin_from_url", {
-          url: plugin.downloadUrl,
-        });
+        const result = await safeInvoke<InstallResult>(
+          "install_plugin_from_url",
+          {
+            url: plugin.downloadUrl,
+          },
+        );
 
         // 取消监听
         if (unlisten) {

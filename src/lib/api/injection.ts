@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { safeInvoke } from "@/lib/dev-bridge";
 
 // Injection mode
 export type InjectionMode = "merge" | "override";
@@ -22,31 +22,31 @@ export interface InjectionConfig {
 export const injectionApi = {
   // Get injection configuration
   async getInjectionConfig(): Promise<InjectionConfig> {
-    return invoke("get_injection_config");
+    return safeInvoke("get_injection_config");
   },
 
   // Set injection enabled
   async setInjectionEnabled(enabled: boolean): Promise<void> {
-    return invoke("set_injection_enabled", { enabled });
+    return safeInvoke("set_injection_enabled", { enabled });
   },
 
   // Add injection rule
   async addInjectionRule(rule: InjectionRule): Promise<void> {
-    return invoke("add_injection_rule", { rule });
+    return safeInvoke("add_injection_rule", { rule });
   },
 
   // Remove injection rule
   async removeInjectionRule(id: string): Promise<void> {
-    return invoke("remove_injection_rule", { id });
+    return safeInvoke("remove_injection_rule", { id });
   },
 
   // Update injection rule
   async updateInjectionRule(id: string, rule: InjectionRule): Promise<void> {
-    return invoke("update_injection_rule", { id, rule });
+    return safeInvoke("update_injection_rule", { id, rule });
   },
 
   // Get all injection rules
   async getInjectionRules(): Promise<InjectionRule[]> {
-    return invoke("get_injection_rules");
+    return safeInvoke("get_injection_rules");
   },
 };

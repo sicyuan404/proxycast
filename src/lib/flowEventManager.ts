@@ -4,8 +4,8 @@
  * 在应用级别管理 Flow 事件订阅，避免页面切换时丢失状态。
  */
 
-import { invoke } from "@tauri-apps/api/core";
-import { listen, UnlistenFn } from "@tauri-apps/api/event";
+import { safeInvoke, safeListen } from "@/lib/dev-bridge";
+import type { UnlistenFn } from "@tauri-apps/api/event";
 import type { FlowEvent, FlowSummary } from "@/lib/api/flowMonitor";
 
 type FlowEventCallback = (event: FlowEvent) => void;
@@ -42,10 +42,10 @@ class FlowEventManager {
 
     try {
       // 调用后端命令启动事件订阅
-      await invoke("subscribe_flow_events");
+      await safeInvoke("subscribe_flow_events");
 
       // 监听 Tauri 事件
-      this.unlisten = await listen<FlowEvent>("flow-event", (event) => {
+      this.unlisten = await safeListen<FlowEvent>("flow-event", (event) => {
         this.handleEvent(event.payload);
       });
 

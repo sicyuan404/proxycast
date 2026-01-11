@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { safeInvoke } from "@/lib/dev-bridge";
 
 export interface RouteEndpoint {
   path: string;
@@ -28,10 +28,10 @@ export interface CurlExample {
 
 export const routesApi = {
   async getAvailableRoutes(): Promise<RouteListResponse> {
-    return invoke("get_available_routes");
+    return safeInvoke("get_available_routes");
   },
 
   async getCurlExamples(selector: string): Promise<CurlExample[]> {
-    return invoke("get_route_curl_examples", { selector });
+    return safeInvoke("get_route_curl_examples", { selector });
   },
 };

@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { safeInvoke } from "@/lib/dev-bridge";
 
 // Provider types supported by the pool
 export type PoolProviderType =
@@ -222,21 +222,21 @@ export interface UpdateCredentialRequest {
 export const providerPoolApi = {
   // Get overview of all provider pools
   async getOverview(): Promise<ProviderPoolOverview[]> {
-    return invoke("get_provider_pool_overview");
+    return safeInvoke("get_provider_pool_overview");
   },
 
   // Get credentials for a specific provider type
   async getCredentials(
     providerType: PoolProviderType,
   ): Promise<CredentialDisplay[]> {
-    return invoke("get_provider_pool_credentials", { providerType });
+    return safeInvoke("get_provider_pool_credentials", { providerType });
   },
 
   // Add a generic credential
   async addCredential(
     request: AddCredentialRequest,
   ): Promise<ProviderCredential> {
-    return invoke("add_provider_pool_credential", { request });
+    return safeInvoke("add_provider_pool_credential", { request });
   },
 
   // Update a credential
@@ -244,7 +244,7 @@ export const providerPoolApi = {
     uuid: string,
     request: UpdateCredentialRequest,
   ): Promise<ProviderCredential> {
-    return invoke("update_provider_pool_credential", { uuid, request });
+    return safeInvoke("update_provider_pool_credential", { uuid, request });
   },
 
   // Delete a credential
@@ -252,7 +252,10 @@ export const providerPoolApi = {
     uuid: string,
     providerType?: PoolProviderType,
   ): Promise<boolean> {
-    return invoke("delete_provider_pool_credential", { uuid, providerType });
+    return safeInvoke("delete_provider_pool_credential", {
+      uuid,
+      providerType,
+    });
   },
 
   // Toggle credential enabled/disabled
@@ -260,29 +263,29 @@ export const providerPoolApi = {
     uuid: string,
     isDisabled: boolean,
   ): Promise<ProviderCredential> {
-    return invoke("toggle_provider_pool_credential", { uuid, isDisabled });
+    return safeInvoke("toggle_provider_pool_credential", { uuid, isDisabled });
   },
 
   // Reset credential counters
   async resetCredential(uuid: string): Promise<void> {
-    return invoke("reset_provider_pool_credential", { uuid });
+    return safeInvoke("reset_provider_pool_credential", { uuid });
   },
 
   // Reset health status for all credentials of a type
   async resetHealth(providerType: PoolProviderType): Promise<number> {
-    return invoke("reset_provider_pool_health", { providerType });
+    return safeInvoke("reset_provider_pool_health", { providerType });
   },
 
   // Check health of a single credential
   async checkCredentialHealth(uuid: string): Promise<HealthCheckResult> {
-    return invoke("check_provider_pool_credential_health", { uuid });
+    return safeInvoke("check_provider_pool_credential_health", { uuid });
   },
 
   // Check health of all credentials of a type
   async checkTypeHealth(
     providerType: PoolProviderType,
   ): Promise<HealthCheckResult[]> {
-    return invoke("check_provider_pool_type_health", { providerType });
+    return safeInvoke("check_provider_pool_type_health", { providerType });
   },
 
   // Provider-specific add methods
@@ -290,7 +293,7 @@ export const providerPoolApi = {
     credsFilePath: string,
     name?: string,
   ): Promise<ProviderCredential> {
-    return invoke("add_kiro_oauth_credential", { credsFilePath, name });
+    return safeInvoke("add_kiro_oauth_credential", { credsFilePath, name });
   },
 
   // 从 JSON 内容添加 Kiro 凭证（直接粘贴 JSON）
@@ -298,7 +301,7 @@ export const providerPoolApi = {
     jsonContent: string,
     name?: string,
   ): Promise<ProviderCredential> {
-    return invoke("add_kiro_from_json", { jsonContent, name });
+    return safeInvoke("add_kiro_from_json", { jsonContent, name });
   },
 
   async addGeminiOAuth(
@@ -306,7 +309,7 @@ export const providerPoolApi = {
     projectId?: string,
     name?: string,
   ): Promise<ProviderCredential> {
-    return invoke("add_gemini_oauth_credential", {
+    return safeInvoke("add_gemini_oauth_credential", {
       credsFilePath,
       projectId,
       name,
@@ -317,7 +320,7 @@ export const providerPoolApi = {
     credsFilePath: string,
     name?: string,
   ): Promise<ProviderCredential> {
-    return invoke("add_qwen_oauth_credential", { credsFilePath, name });
+    return safeInvoke("add_qwen_oauth_credential", { credsFilePath, name });
   },
 
   async addOpenAIKey(
@@ -325,7 +328,7 @@ export const providerPoolApi = {
     baseUrl?: string,
     name?: string,
   ): Promise<ProviderCredential> {
-    return invoke("add_openai_key_credential", { apiKey, baseUrl, name });
+    return safeInvoke("add_openai_key_credential", { apiKey, baseUrl, name });
   },
 
   async addClaudeKey(
@@ -333,7 +336,7 @@ export const providerPoolApi = {
     baseUrl?: string,
     name?: string,
   ): Promise<ProviderCredential> {
-    return invoke("add_claude_key_credential", { apiKey, baseUrl, name });
+    return safeInvoke("add_claude_key_credential", { apiKey, baseUrl, name });
   },
 
   async addGeminiApiKey(
@@ -342,7 +345,7 @@ export const providerPoolApi = {
     excludedModels?: string[],
     name?: string,
   ): Promise<ProviderCredential> {
-    return invoke("add_gemini_api_key_credential", {
+    return safeInvoke("add_gemini_api_key_credential", {
       apiKey,
       baseUrl,
       excludedModels,
@@ -355,7 +358,7 @@ export const providerPoolApi = {
     projectId?: string,
     name?: string,
   ): Promise<ProviderCredential> {
-    return invoke("add_antigravity_oauth_credential", {
+    return safeInvoke("add_antigravity_oauth_credential", {
       credsFilePath,
       projectId,
       name,
@@ -367,7 +370,7 @@ export const providerPoolApi = {
     apiBaseUrl?: string,
     name?: string,
   ): Promise<ProviderCredential> {
-    return invoke("add_codex_oauth_credential", {
+    return safeInvoke("add_codex_oauth_credential", {
       credsFilePath,
       apiBaseUrl,
       name,
@@ -378,21 +381,21 @@ export const providerPoolApi = {
     credsFilePath: string,
     name?: string,
   ): Promise<ProviderCredential> {
-    return invoke("add_claude_oauth_credential", { credsFilePath, name });
+    return safeInvoke("add_claude_oauth_credential", { credsFilePath, name });
   },
 
   async addIFlowOAuth(
     credsFilePath: string,
     name?: string,
   ): Promise<ProviderCredential> {
-    return invoke("add_iflow_oauth_credential", { credsFilePath, name });
+    return safeInvoke("add_iflow_oauth_credential", { credsFilePath, name });
   },
 
   async addIFlowCookie(
     credsFilePath: string,
     name?: string,
   ): Promise<ProviderCredential> {
-    return invoke("add_iflow_cookie_credential", { credsFilePath, name });
+    return safeInvoke("add_iflow_cookie_credential", { credsFilePath, name });
   },
 
   // Antigravity OAuth 登录（打开浏览器授权）
@@ -400,7 +403,7 @@ export const providerPoolApi = {
     name?: string,
     skipProjectIdFetch?: boolean,
   ): Promise<ProviderCredential> {
-    return invoke("start_antigravity_oauth_login", {
+    return safeInvoke("start_antigravity_oauth_login", {
       name,
       skipProjectIdFetch,
     });
@@ -413,7 +416,7 @@ export const providerPoolApi = {
     name?: string,
     skipProjectIdFetch?: boolean,
   ): Promise<ProviderCredential> {
-    return invoke("get_antigravity_auth_url_and_wait", {
+    return safeInvoke("get_antigravity_auth_url_and_wait", {
       name,
       skipProjectIdFetch,
     });
@@ -421,18 +424,18 @@ export const providerPoolApi = {
 
   // Codex OAuth 登录（打开浏览器授权）
   async startCodexOAuthLogin(name?: string): Promise<ProviderCredential> {
-    return invoke("start_codex_oauth_login", { name });
+    return safeInvoke("start_codex_oauth_login", { name });
   },
 
   // 获取 Codex OAuth 授权 URL 并等待回调（不自动打开浏览器）
   // 服务器会在后台等待回调，成功后返回凭证
   async getCodexAuthUrlAndWait(name?: string): Promise<ProviderCredential> {
-    return invoke("get_codex_auth_url_and_wait", { name });
+    return safeInvoke("get_codex_auth_url_and_wait", { name });
   },
 
   // Claude OAuth 登录（打开浏览器授权）
   async startClaudeOAuthLogin(name?: string): Promise<ProviderCredential> {
-    return invoke("start_claude_oauth_login", { name });
+    return safeInvoke("start_claude_oauth_login", { name });
   },
 
   // 获取 Claude OAuth 授权 URL 并等待回调（不自动打开浏览器）
@@ -440,7 +443,7 @@ export const providerPoolApi = {
   async getClaudeOAuthAuthUrlAndWait(
     name?: string,
   ): Promise<ProviderCredential> {
-    return invoke("get_claude_oauth_auth_url_and_wait", { name });
+    return safeInvoke("get_claude_oauth_auth_url_and_wait", { name });
   },
 
   // Claude Cookie 自动授权（使用 sessionKey 自动完成 OAuth 流程）
@@ -450,7 +453,7 @@ export const providerPoolApi = {
     isSetupToken?: boolean,
     name?: string,
   ): Promise<ProviderCredential> {
-    return invoke("claude_oauth_with_cookie", {
+    return safeInvoke("claude_oauth_with_cookie", {
       sessionKey,
       isSetupToken,
       name,
@@ -459,35 +462,35 @@ export const providerPoolApi = {
 
   // Qwen Device Code Flow 登录（打开浏览器授权）
   async startQwenDeviceCodeLogin(name?: string): Promise<ProviderCredential> {
-    return invoke("start_qwen_device_code_login", { name });
+    return safeInvoke("start_qwen_device_code_login", { name });
   },
 
   // 获取 Qwen Device Code 并等待用户授权（不自动打开浏览器）
   // 服务器会在后台轮询等待授权，成功后返回凭证
   async getQwenDeviceCodeAndWait(name?: string): Promise<ProviderCredential> {
-    return invoke("get_qwen_device_code_and_wait", { name });
+    return safeInvoke("get_qwen_device_code_and_wait", { name });
   },
 
   // iFlow OAuth 登录（打开浏览器授权）
   async startIFlowOAuthLogin(name?: string): Promise<ProviderCredential> {
-    return invoke("start_iflow_oauth_login", { name });
+    return safeInvoke("start_iflow_oauth_login", { name });
   },
 
   // 获取 iFlow OAuth 授权 URL 并等待回调（不自动打开浏览器）
   // 服务器会在后台等待回调，成功后返回凭证
   async getIFlowAuthUrlAndWait(name?: string): Promise<ProviderCredential> {
-    return invoke("get_iflow_auth_url_and_wait", { name });
+    return safeInvoke("get_iflow_auth_url_and_wait", { name });
   },
 
   // Gemini OAuth 登录（打开浏览器授权）
   async startGeminiOAuthLogin(name?: string): Promise<ProviderCredential> {
-    return invoke("start_gemini_oauth_login", { name });
+    return safeInvoke("start_gemini_oauth_login", { name });
   },
 
   // 获取 Gemini OAuth 授权 URL 并等待回调（不自动打开浏览器）
   // 服务器会在后台等待回调，成功后返回凭证
   async getGeminiAuthUrlAndWait(name?: string): Promise<ProviderCredential> {
-    return invoke("get_gemini_auth_url_and_wait", { name });
+    return safeInvoke("get_gemini_auth_url_and_wait", { name });
   },
 
   // 用 Gemini 授权码交换 token
@@ -496,7 +499,7 @@ export const providerPoolApi = {
     sessionId?: string,
     name?: string,
   ): Promise<ProviderCredential> {
-    return invoke("exchange_gemini_code", { code, sessionId, name });
+    return safeInvoke("exchange_gemini_code", { code, sessionId, name });
   },
 
   // ============ Kiro Builder ID 登录 ============
@@ -505,22 +508,22 @@ export const providerPoolApi = {
   async startKiroBuilderIdLogin(
     region?: string,
   ): Promise<KiroBuilderIdLoginResponse> {
-    return invoke("start_kiro_builder_id_login", { region });
+    return safeInvoke("start_kiro_builder_id_login", { region });
   },
 
   // 轮询 Kiro Builder ID 授权状态
   async pollKiroBuilderIdAuth(): Promise<KiroBuilderIdPollResponse> {
-    return invoke("poll_kiro_builder_id_auth");
+    return safeInvoke("poll_kiro_builder_id_auth");
   },
 
   // 取消 Kiro Builder ID 登录
   async cancelKiroBuilderIdLogin(): Promise<boolean> {
-    return invoke("cancel_kiro_builder_id_login");
+    return safeInvoke("cancel_kiro_builder_id_login");
   },
 
   // 从 Builder ID 授权结果添加 Kiro 凭证
   async addKiroFromBuilderIdAuth(name?: string): Promise<ProviderCredential> {
-    return invoke("add_kiro_from_builder_id_auth", { name });
+    return safeInvoke("add_kiro_from_builder_id_auth", { name });
   },
 
   // ============ Kiro Social Auth 登录 (Google/GitHub) ============
@@ -529,7 +532,7 @@ export const providerPoolApi = {
   async startKiroSocialAuthLogin(
     provider: "Google" | "Github",
   ): Promise<KiroSocialAuthLoginResponse> {
-    return invoke("start_kiro_social_auth_login", { provider });
+    return safeInvoke("start_kiro_social_auth_login", { provider });
   },
 
   // 交换 Kiro Social Auth Token
@@ -537,31 +540,31 @@ export const providerPoolApi = {
     code: string,
     state: string,
   ): Promise<KiroSocialAuthTokenResponse> {
-    return invoke("exchange_kiro_social_auth_token", { code, state });
+    return safeInvoke("exchange_kiro_social_auth_token", { code, state });
   },
 
   // 取消 Kiro Social Auth 登录
   async cancelKiroSocialAuthLogin(): Promise<boolean> {
-    return invoke("cancel_kiro_social_auth_login");
+    return safeInvoke("cancel_kiro_social_auth_login");
   },
 
   // 启动 Kiro Social Auth 回调服务器
   async startKiroSocialAuthCallbackServer(): Promise<boolean> {
-    return invoke("start_kiro_social_auth_callback_server");
+    return safeInvoke("start_kiro_social_auth_callback_server");
   },
 
   // OAuth token management
   async refreshCredentialToken(uuid: string): Promise<string> {
-    return invoke("refresh_pool_credential_token", { uuid });
+    return safeInvoke("refresh_pool_credential_token", { uuid });
   },
 
   async getCredentialOAuthStatus(uuid: string): Promise<OAuthStatus> {
-    return invoke("get_pool_credential_oauth_status", { uuid });
+    return safeInvoke("get_pool_credential_oauth_status", { uuid });
   },
 
   // Migration API
   async migratePrivateConfig(config: unknown): Promise<MigrationResult> {
-    return invoke("migrate_private_config_to_pool", { config });
+    return safeInvoke("migrate_private_config_to_pool", { config });
   },
 
   // 获取单个凭证的健康状态
@@ -569,13 +572,13 @@ export const providerPoolApi = {
   async getCredentialHealth(
     uuid: string,
   ): Promise<CredentialHealthInfo | null> {
-    return invoke("get_credential_health", { uuid });
+    return safeInvoke("get_credential_health", { uuid });
   },
 
   // 获取所有凭证的健康状态
   // Requirements: 4.4
   async getAllCredentialHealth(): Promise<CredentialHealthInfo[]> {
-    return invoke("get_all_credential_health");
+    return safeInvoke("get_all_credential_health");
   },
 };
 
@@ -667,7 +670,7 @@ export interface PlaywrightStatus {
 export async function getKiroCredentialFingerprint(
   uuid: string,
 ): Promise<KiroFingerprintInfo> {
-  return invoke("get_kiro_credential_fingerprint", { uuid });
+  return safeInvoke("get_kiro_credential_fingerprint", { uuid });
 }
 
 // 切换到本地的结果
@@ -688,12 +691,12 @@ export interface SwitchToLocalResult {
 export async function switchKiroToLocal(
   uuid: string,
 ): Promise<SwitchToLocalResult> {
-  return invoke("switch_kiro_to_local", { uuid });
+  return safeInvoke("switch_kiro_to_local", { uuid });
 }
 
 // 获取当前本地使用的 Kiro 凭证 UUID
 export async function getLocalKiroCredentialUuid(): Promise<string | null> {
-  return invoke("get_local_kiro_credential_uuid");
+  return safeInvoke("get_local_kiro_credential_uuid");
 }
 
 // ============ Kiro 凭证池管理 HTTP API ============
@@ -831,7 +834,7 @@ export const kiroCredentialApi = {
  * Requirements: 2.1
  */
 export async function checkPlaywrightAvailable(): Promise<PlaywrightStatus> {
-  return invoke("check_playwright_available");
+  return safeInvoke("check_playwright_available");
 }
 
 /**
@@ -842,7 +845,7 @@ export async function checkPlaywrightAvailable(): Promise<PlaywrightStatus> {
  * 会发送 playwright-install-progress 事件通知安装进度
  */
 export async function installPlaywright(): Promise<PlaywrightStatus> {
-  return invoke("install_playwright");
+  return safeInvoke("install_playwright");
 }
 
 /**
@@ -856,7 +859,7 @@ export async function startKiroPlaywrightLogin(
   provider: "Google" | "Github" | "BuilderId",
   name?: string,
 ): Promise<ProviderCredential> {
-  return invoke("start_kiro_playwright_login", { provider, name });
+  return safeInvoke("start_kiro_playwright_login", { provider, name });
 }
 
 /**
@@ -864,5 +867,5 @@ export async function startKiroPlaywrightLogin(
  * Requirements: 5.3
  */
 export async function cancelKiroPlaywrightLogin(): Promise<boolean> {
-  return invoke("cancel_kiro_playwright_login");
+  return safeInvoke("cancel_kiro_playwright_login");
 }

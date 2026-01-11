@@ -4,7 +4,8 @@
  * 在应用级别管理配置变更事件订阅，确保全应用范围内的配置同步。
  */
 
-import { listen, UnlistenFn } from "@tauri-apps/api/event";
+import { safeListen } from "@/lib/dev-bridge";
+import type { UnlistenFn } from "@tauri-apps/api/event";
 
 /** 配置变更来源 */
 export type ConfigChangeSource =
@@ -148,7 +149,7 @@ class ConfigEventManager {
 
     try {
       // 监听 Tauri 配置变更事件
-      this.unlisten = await listen<ConfigChangeEvent>(
+      this.unlisten = await safeListen<ConfigChangeEvent>(
         CONFIG_CHANGED_EVENT,
         (event) => {
           this.handleEvent(event.payload);

@@ -6,8 +6,9 @@
  */
 
 import React, { useState, useEffect, useCallback } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { listen, UnlistenFn } from "@tauri-apps/api/event";
+import { safeInvoke } from "@/lib/dev-bridge";
+import { safeListen } from "@/lib/dev-bridge";
+import type { UnlistenFn } from "@tauri-apps/api/event";
 import {
   Shield,
   ShieldOff,
@@ -127,7 +128,7 @@ export function InterceptPanel({
   const loadConfig = useCallback(async () => {
     try {
       setLoading(true);
-      const result = await invoke<InterceptConfig>("intercept_config_get");
+      const result = await safeInvoke<InterceptConfig>("intercept_config_get");
       setConfig(result);
       setFilterExpr(result.filter_expr || "");
     } catch (e) {
@@ -141,7 +142,7 @@ export function InterceptPanel({
   // 加载被拦截的 Flow 列表
   const loadInterceptedFlows = useCallback(async () => {
     try {
-      const flows = await invoke<InterceptedFlow[]>("intercept_list_flows");
+      const flows = await safeInvoke<InterceptedFlow[]>("intercept_list_flows");
       setInterceptedFlows(flows);
     } catch (e) {
       console.error("加载拦截列表失败:", e);
@@ -153,7 +154,7 @@ export function InterceptPanel({
     try {
       setSaving(true);
       setError(null);
-      await invoke("intercept_config_set", { config: newConfig });
+      await safeInvoke("intercept_config_set", { config: newConfig });
       setConfig(newConfig);
     } catch (e) {
       console.error("保存拦截配置失败:", e);
@@ -222,25 +223,28 @@ export function InterceptPanel({
 
     const setupListener = async () => {
       try {
-        unlisten = await listen<InterceptEvent>("intercept-event", (event) => {
-          const data = event.payload;
-          switch (data.type) {
-            case "FlowIntercepted":
-              setInterceptedFlows((prev) => [...prev, data.flow]);
-              break;
-            case "FlowContinued":
-            case "FlowCancelled":
-            case "FlowTimedOut":
-              setInterceptedFlows((prev) =>
-                prev.filter((f) => f.flow_id !== data.flow_id),
-              );
-              break;
-            case "ConfigUpdated":
-              setConfig(data.config);
-              setFilterExpr(data.config.filter_expr || "");
-              break;
-          }
-        });
+        unlisten = await safeListen<InterceptEvent>(
+          "intercept-event",
+          (event) => {
+            const data = event.payload;
+            switch (data.type) {
+              case "FlowIntercepted":
+                setInterceptedFlows((prev) => [...prev, data.flow]);
+                break;
+              case "FlowContinued":
+              case "FlowCancelled":
+              case "FlowTimedOut":
+                setInterceptedFlows((prev) =>
+                  prev.filter((f) => f.flow_id !== data.flow_id),
+                );
+                break;
+              case "ConfigUpdated":
+                setConfig(data.config);
+                setFilterExpr(data.config.filter_expr || "");
+                break;
+            }
+          },
+        );
       } catch (e) {
         console.error("设置拦截事件监听失败:", e);
       }
@@ -486,7 +490,7 @@ function InterceptedFlowItem({ flow, onSelect }: InterceptedFlowItemProps) {
     e.stopPropagation();
     try {
       setContinuing(true);
-      await invoke("intercept_continue", {
+      await safeInvoke("intercept_continue", {
         flowId: flow.flow_id,
         modifiedRequest: null,
         modifiedResponse: null,
@@ -502,7 +506,7 @@ function InterceptedFlowItem({ flow, onSelect }: InterceptedFlowItemProps) {
     e.stopPropagation();
     try {
       setCancelling(true);
-      await invoke("intercept_cancel", { flowId: flow.flow_id });
+      await safeInvoke("intercept_cancel", { flowId: flow.flow_id });
     } catch (err) {
       console.error("取消 Flow 失败:", err);
     } finally {

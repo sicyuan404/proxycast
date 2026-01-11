@@ -9,7 +9,8 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { toast } from "sonner";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { safeListen } from "@/lib/dev-bridge";
+import type { UnlistenFn } from "@tauri-apps/api/event";
 import {
   startAgentProcess,
   getAgentProcessStatus,
@@ -264,7 +265,7 @@ export function useTerminalAI(
         const eventName = `terminal_ai_stream_${assistantMsgId}`;
 
         // 设置事件监听
-        unlisten = await listen<StreamEvent>(eventName, (event) => {
+        unlisten = await safeListen<StreamEvent>(eventName, (event) => {
           const data = parseStreamEvent(event.payload);
           if (!data) return;
 
@@ -502,7 +503,7 @@ export function useTerminalAI(
     let unlisten: UnlistenFn | null = null;
 
     const setupListener = async () => {
-      unlisten = await listen<TerminalCommandRequest>(
+      unlisten = await safeListen<TerminalCommandRequest>(
         "terminal_command_request",
         (event) => {
           const request = event.payload;
@@ -562,7 +563,7 @@ export function useTerminalAI(
     let unlisten: UnlistenFn | null = null;
 
     const setupListener = async () => {
-      unlisten = await listen<TermScrollbackRequest>(
+      unlisten = await safeListen<TermScrollbackRequest>(
         "term_get_scrollback_request",
         async (event) => {
           const request = event.payload;

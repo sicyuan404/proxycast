@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { safeInvoke } from "@/lib/dev-bridge";
 import {
   Puzzle,
   RefreshCw,
@@ -162,9 +162,9 @@ export function PluginManager() {
     try {
       setLoading(true);
       const [serviceStatus, pluginList, installedList] = await Promise.all([
-        invoke<PluginServiceStatus>("get_plugin_status"),
-        invoke<PluginInfo[]>("get_plugins"),
-        invoke<InstalledPlugin[]>("list_installed_plugins").catch(() => []),
+        safeInvoke<PluginServiceStatus>("get_plugin_status"),
+        safeInvoke<PluginInfo[]>("get_plugins"),
+        safeInvoke<InstalledPlugin[]>("list_installed_plugins").catch(() => []),
       ]);
       setStatus(serviceStatus);
       setPlugins(pluginList);
@@ -205,9 +205,9 @@ export function PluginManager() {
   const handleTogglePlugin = async (name: string, currentEnabled: boolean) => {
     try {
       if (currentEnabled) {
-        await invoke("disable_plugin", { name });
+        await safeInvoke("disable_plugin", { name });
       } else {
-        await invoke("enable_plugin", { name });
+        await safeInvoke("enable_plugin", { name });
       }
       await fetchData();
     } catch (err) {
@@ -217,7 +217,7 @@ export function PluginManager() {
 
   const handleReloadPlugins = async () => {
     try {
-      await invoke("reload_plugins");
+      await safeInvoke("reload_plugins");
       await fetchData();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -226,7 +226,7 @@ export function PluginManager() {
 
   const handleUnloadPlugin = async (name: string) => {
     try {
-      await invoke("unload_plugin", { name });
+      await safeInvoke("unload_plugin", { name });
       await fetchData();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -393,10 +393,10 @@ export function PluginManager() {
                 onToggleEnabled={async () => {
                   try {
                     if (plugin.enabled) {
-                      await invoke("disable_plugin", { name: plugin.id });
+                      await safeInvoke("disable_plugin", { name: plugin.id });
                       toast.success("插件已禁用");
                     } else {
-                      await invoke("enable_plugin", { name: plugin.id });
+                      await safeInvoke("enable_plugin", { name: plugin.id });
                       toast.success("插件已启用");
                     }
                     fetchData();

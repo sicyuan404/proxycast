@@ -7,7 +7,7 @@
  * @module lib/webview-api
  */
 
-import { invoke } from "@tauri-apps/api/core";
+import { safeInvoke } from "@/lib/dev-bridge";
 import { Webview } from "@tauri-apps/api/webview";
 
 /**
@@ -71,7 +71,7 @@ export interface CreateWebviewResponse {
 export async function createWebviewPanel(
   request: CreateWebviewRequest,
 ): Promise<CreateWebviewResponse> {
-  return invoke<CreateWebviewResponse>("create_webview_panel", { request });
+  return safeInvoke<CreateWebviewResponse>("create_webview_panel", { request });
 }
 
 /**
@@ -95,9 +95,9 @@ export async function closeWebviewPanel(panelId: string): Promise<boolean> {
       await webview.close();
       console.log("[webview-api] Tauri API 关闭成功");
       // 也调用后端清理状态
-      await invoke<boolean>("close_webview_panel", { panel_id: panelId }).catch(
-        () => {},
-      );
+      await safeInvoke<boolean>("close_webview_panel", {
+        panel_id: panelId,
+      }).catch(() => {});
       return true;
     }
   } catch (e) {
@@ -106,7 +106,7 @@ export async function closeWebviewPanel(panelId: string): Promise<boolean> {
 
   // 方法 2: 使用后端命令关闭
   try {
-    const result = await invoke<boolean>("close_webview_panel", {
+    const result = await safeInvoke<boolean>("close_webview_panel", {
       panel_id: panelId,
     });
     console.log("[webview-api] 后端命令关闭结果:", result);
@@ -128,7 +128,10 @@ export async function navigateWebviewPanel(
   panelId: string,
   url: string,
 ): Promise<boolean> {
-  return invoke<boolean>("navigate_webview_panel", { panel_id: panelId, url });
+  return safeInvoke<boolean>("navigate_webview_panel", {
+    panel_id: panelId,
+    url,
+  });
 }
 
 /**
@@ -137,7 +140,7 @@ export async function navigateWebviewPanel(
  * @returns 面板列表
  */
 export async function getWebviewPanels(): Promise<WebviewPanelInfo[]> {
-  return invoke<WebviewPanelInfo[]>("get_webview_panels");
+  return safeInvoke<WebviewPanelInfo[]>("get_webview_panels");
 }
 
 /**
@@ -147,7 +150,7 @@ export async function getWebviewPanels(): Promise<WebviewPanelInfo[]> {
  * @returns 是否成功
  */
 export async function focusWebviewPanel(panelId: string): Promise<boolean> {
-  return invoke<boolean>("focus_webview_panel", { panel_id: panelId });
+  return safeInvoke<boolean>("focus_webview_panel", { panel_id: panelId });
 }
 
 /**
@@ -167,7 +170,7 @@ export async function resizeWebviewPanel(
   width: number,
   height: number,
 ): Promise<boolean> {
-  return invoke<boolean>("resize_webview_panel", {
+  return safeInvoke<boolean>("resize_webview_panel", {
     panel_id: panelId,
     x,
     y,

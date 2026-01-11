@@ -5,8 +5,8 @@
  */
 
 import { useState, useCallback, useRef } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { safeInvoke, safeListen } from "@/lib/dev-bridge";
+import type { UnlistenFn } from "@tauri-apps/api/event";
 import { toast } from "sonner";
 import type {
   ChatMessage,
@@ -24,7 +24,7 @@ import { parseStreamEvent, type StreamEvent } from "@/lib/api/agent";
  */
 export async function readImageAsBase64(imagePath: string): Promise<string> {
   try {
-    const base64 = await invoke<string>("read_image_as_base64", {
+    const base64 = await safeInvoke<string>("read_image_as_base64", {
       path: imagePath,
     });
     return base64;
@@ -85,7 +85,7 @@ export function useScreenshotChat(): UseScreenshotChatReturn {
     }
 
     try {
-      const response = await invoke<{ session_id: string }>(
+      const response = await safeInvoke<{ session_id: string }>(
         "agent_create_session",
         {
           providerType: "claude",
@@ -156,7 +156,7 @@ export function useScreenshotChat(): UseScreenshotChatReturn {
         const eventName = `screenshot_chat_stream_${assistantMsgId}`;
 
         // 设置事件监听器
-        unlisten = await listen<StreamEvent>(eventName, (event) => {
+        unlisten = await safeListen<StreamEvent>(eventName, (event) => {
           const data = parseStreamEvent(event.payload);
           if (!data) return;
 
@@ -226,7 +226,7 @@ export function useScreenshotChat(): UseScreenshotChatReturn {
             : [];
 
         // 发送流式请求
-        await invoke("native_agent_chat_stream", {
+        await safeInvoke("native_agent_chat_stream", {
           message,
           eventName,
           sessionId,

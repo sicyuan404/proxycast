@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { safeInvoke } from "@/lib/dev-bridge";
 
 interface AutoFixResult {
   issues_found: string[];
@@ -8,7 +8,7 @@ interface AutoFixResult {
 
 export const useAutoFix = () => {
   const runAutoFix = async (): Promise<AutoFixResult> => {
-    return await invoke("auto_fix_configuration");
+    return await safeInvoke("auto_fix_configuration");
   };
 
   return {

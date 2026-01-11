@@ -79,6 +79,7 @@ pub fn run() {
         terminal_manager: terminal_manager_state,
         webview_manager: webview_manager_state,
         update_check_service: update_check_service_state,
+        session_files: session_files_state,
         shared_stats,
         shared_tokens,
         shared_logger,
@@ -160,6 +161,7 @@ pub fn run() {
         .manage(terminal_manager_state)
         .manage(webview_manager_state)
         .manage(update_check_service_state)
+        .manage(session_files_state)
         .on_window_event(move |window, event| {
             // 处理窗口关闭事件
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
@@ -580,6 +582,42 @@ pub fn run() {
                 ).await;
             });
             tracing::info!("[启动] 后台更新检查任务已启动");
+
+            // 启动会话文件清理任务（清理 30 天前的过期会话）
+            tauri::async_runtime::spawn(async move {
+                // 延迟 10 秒执行，避免影响启动性能
+                tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+
+                match crate::session_files::SessionFileStorage::new() {
+                    Ok(storage) => {
+                        // 清理过期会话（30 天）
+                        match storage.cleanup_expired(30) {
+                            Ok(count) if count > 0 => {
+                                tracing::info!("[启动] 已清理 {} 个过期会话", count);
+                            }
+                            Ok(_) => {
+                                tracing::debug!("[启动] 无过期会话需要清理");
+                            }
+                            Err(e) => {
+                                tracing::warn!("[启动] 清理过期会话失败: {}", e);
+                            }
+                        }
+                        // 清理空会话
+                        match storage.cleanup_empty() {
+                            Ok(count) if count > 0 => {
+                                tracing::info!("[启动] 已清理 {} 个空会话", count);
+                            }
+                            Ok(_) => {}
+                            Err(e) => {
+                                tracing::warn!("[启动] 清理空会话失败: {}", e);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!("[启动] 会话文件存储初始化失败: {}", e);
+                    }
+                }
+            });
 
             Ok(())
         })
@@ -1186,6 +1224,20 @@ pub fn run() {
             commands::music_cmd::convert_mp3_to_midi,
             commands::music_cmd::load_music_resource,
             commands::music_cmd::install_python_dependencies,
+            // Session Files commands
+            commands::session_files_cmd::session_files_create,
+            commands::session_files_cmd::session_files_exists,
+            commands::session_files_cmd::session_files_get_or_create,
+            commands::session_files_cmd::session_files_delete,
+            commands::session_files_cmd::session_files_list,
+            commands::session_files_cmd::session_files_get_detail,
+            commands::session_files_cmd::session_files_update_meta,
+            commands::session_files_cmd::session_files_save_file,
+            commands::session_files_cmd::session_files_read_file,
+            commands::session_files_cmd::session_files_delete_file,
+            commands::session_files_cmd::session_files_list_files,
+            commands::session_files_cmd::session_files_cleanup_expired,
+            commands::session_files_cmd::session_files_cleanup_empty,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -40,7 +40,7 @@ import {
   Check,
   ExternalLink,
 } from "lucide-react";
-import { listen } from "@tauri-apps/api/event";
+import { safeListen } from "@/lib/dev-bridge";
 import { open } from "@tauri-apps/plugin-shell";
 
 interface KiroFormProps {
@@ -233,7 +233,7 @@ export function KiroForm({
       await providerPoolApi.startKiroSocialAuthCallbackServer();
 
       // 监听回调事件
-      const unlisten = await listen<{ code: string; state: string }>(
+      const unlisten = await safeListen<{ code: string; state: string }>(
         "kiro-social-auth-callback",
         async (event) => {
           try {
@@ -309,7 +309,7 @@ export function KiroForm({
         await open(result.verificationUri);
 
         // 监听授权完成事件
-        const unlisten = await listen<{ uuid: string }>(
+        const unlisten = await safeListen<{ uuid: string }>(
           "kiro-builderid-auth-complete",
           () => {
             // 授权完成

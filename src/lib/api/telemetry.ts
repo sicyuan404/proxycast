@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { safeInvoke } from "@/lib/dev-bridge";
 
 // ========== 类型定义 ==========
 
@@ -132,17 +132,17 @@ export async function getRequestLogs(params?: {
   status?: RequestStatus;
   limit?: number;
 }): Promise<RequestLog[]> {
-  return invoke("get_request_logs", params || {});
+  return safeInvoke("get_request_logs", params || {});
 }
 
 export async function getRequestLogDetail(
   id: string,
 ): Promise<RequestLog | null> {
-  return invoke("get_request_log_detail", { id });
+  return safeInvoke("get_request_log_detail", { id });
 }
 
 export async function clearRequestLogs(): Promise<void> {
-  return invoke("clear_request_logs");
+  return safeInvoke("clear_request_logs");
 }
 
 // ========== 统计 API ==========
@@ -150,19 +150,19 @@ export async function clearRequestLogs(): Promise<void> {
 export async function getStatsSummary(
   timeRange?: TimeRangeParam,
 ): Promise<StatsSummary> {
-  return invoke("get_stats_summary", { time_range: timeRange });
+  return safeInvoke("get_stats_summary", { time_range: timeRange });
 }
 
 export async function getStatsByProvider(
   timeRange?: TimeRangeParam,
 ): Promise<Record<string, ProviderStats>> {
-  return invoke("get_stats_by_provider", { time_range: timeRange });
+  return safeInvoke("get_stats_by_provider", { time_range: timeRange });
 }
 
 export async function getStatsByModel(
   timeRange?: TimeRangeParam,
 ): Promise<Record<string, ModelStats>> {
-  return invoke("get_stats_by_model", { time_range: timeRange });
+  return safeInvoke("get_stats_by_model", { time_range: timeRange });
 }
 
 // ========== Token 统计 API ==========
@@ -170,23 +170,23 @@ export async function getStatsByModel(
 export async function getTokenSummary(
   timeRange?: TimeRangeParam,
 ): Promise<TokenStatsSummary> {
-  return invoke("get_token_summary", { time_range: timeRange });
+  return safeInvoke("get_token_summary", { time_range: timeRange });
 }
 
 export async function getTokenStatsByProvider(
   timeRange?: TimeRangeParam,
 ): Promise<Record<string, ProviderTokenStats>> {
-  return invoke("get_token_stats_by_provider", { time_range: timeRange });
+  return safeInvoke("get_token_stats_by_provider", { time_range: timeRange });
 }
 
 export async function getTokenStatsByModel(
   timeRange?: TimeRangeParam,
 ): Promise<Record<string, ModelTokenStats>> {
-  return invoke("get_token_stats_by_model", { time_range: timeRange });
+  return safeInvoke("get_token_stats_by_model", { time_range: timeRange });
 }
 
 export async function getTokenStatsByDay(
   days?: number,
 ): Promise<PeriodTokenStats[]> {
-  return invoke("get_token_stats_by_day", { days });
+  return safeInvoke("get_token_stats_by_day", { days });
 }

@@ -6,7 +6,7 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { safeInvoke } from "@/lib/dev-bridge";
 import {
   Filter,
   Plus,
@@ -107,8 +107,8 @@ export function QuickFilterPanel({
       setLoading(true);
       setError(null);
       const [filterList, groupList] = await Promise.all([
-        invoke<QuickFilter[]>("list_quick_filters"),
-        invoke<string[]>("list_quick_filter_groups"),
+        safeInvoke<QuickFilter[]>("list_quick_filters"),
+        safeInvoke<string[]>("list_quick_filter_groups"),
       ]);
       setFilters(filterList);
       setGroups(groupList);
@@ -131,7 +131,7 @@ export function QuickFilterPanel({
 
     try {
       setCreating(true);
-      const filter = await invoke<QuickFilter>("save_quick_filter", {
+      const filter = await safeInvoke<QuickFilter>("save_quick_filter", {
         request: {
           name: createName.trim(),
           filter_expr: createFilterExpr.trim(),
@@ -162,7 +162,7 @@ export function QuickFilterPanel({
 
     try {
       setSaving(true);
-      const updated = await invoke<QuickFilter>("update_quick_filter", {
+      const updated = await safeInvoke<QuickFilter>("update_quick_filter", {
         request: {
           id: editingFilter.id,
           name: editName.trim(),
@@ -204,7 +204,7 @@ export function QuickFilterPanel({
       if (!confirm("确定要删除此过滤器吗？")) return;
 
       try {
-        await invoke("delete_quick_filter", { id: filterId });
+        await safeInvoke("delete_quick_filter", { id: filterId });
         setFilters((prev) => prev.filter((f) => f.id !== filterId));
         setMenuFilterId(null);
       } catch (e) {
@@ -219,7 +219,7 @@ export function QuickFilterPanel({
   const handleExport = useCallback(async () => {
     try {
       setExporting(true);
-      const data = await invoke<string>("export_quick_filters", {
+      const data = await safeInvoke<string>("export_quick_filters", {
         includePresets: false,
       });
 
@@ -255,12 +255,15 @@ export function QuickFilterPanel({
         try {
           setImporting(true);
           const data = await file.text();
-          const imported = await invoke<QuickFilter[]>("import_quick_filters", {
-            request: {
-              data,
-              overwrite: false,
+          const imported = await safeInvoke<QuickFilter[]>(
+            "import_quick_filters",
+            {
+              request: {
+                data,
+                overwrite: false,
+              },
             },
-          });
+          );
           if (imported.length > 0) {
             await loadFilters();
             setError(null);

@@ -7,7 +7,7 @@
  * **Validates: Requirements 9.1**
  */
 
-import { invoke } from "@tauri-apps/api/core";
+import { safeInvoke } from "@/lib/dev-bridge";
 
 // ============================================================================
 // 请求类型
@@ -120,14 +120,14 @@ export const apiKeyProviderApi = {
    * 获取所有 API Key Provider（包含 API Keys）
    */
   async getProviders(): Promise<ProviderWithKeysDisplay[]> {
-    return invoke("get_api_key_providers");
+    return safeInvoke("get_api_key_providers");
   },
 
   /**
    * 获取单个 API Key Provider（包含 API Keys）
    */
   async getProvider(id: string): Promise<ProviderWithKeysDisplay | null> {
-    return invoke("get_api_key_provider", { id });
+    return safeInvoke("get_api_key_provider", { id });
   },
 
   /**
@@ -136,7 +136,7 @@ export const apiKeyProviderApi = {
   async addCustomProvider(
     request: AddCustomProviderRequest,
   ): Promise<ProviderDisplay> {
-    return invoke("add_custom_api_key_provider", { request });
+    return safeInvoke("add_custom_api_key_provider", { request });
   },
 
   /**
@@ -146,35 +146,35 @@ export const apiKeyProviderApi = {
     id: string,
     request: UpdateProviderRequest,
   ): Promise<ProviderDisplay> {
-    return invoke("update_api_key_provider", { id, request });
+    return safeInvoke("update_api_key_provider", { id, request });
   },
 
   /**
    * 删除自定义 Provider
    */
   async deleteCustomProvider(id: string): Promise<boolean> {
-    return invoke("delete_custom_api_key_provider", { id });
+    return safeInvoke("delete_custom_api_key_provider", { id });
   },
 
   /**
    * 添加 API Key
    */
   async addApiKey(request: AddApiKeyRequest): Promise<ApiKeyDisplay> {
-    return invoke("add_api_key", { request });
+    return safeInvoke("add_api_key", { request });
   },
 
   /**
    * 删除 API Key
    */
   async deleteApiKey(keyId: string): Promise<boolean> {
-    return invoke("delete_api_key", { keyId });
+    return safeInvoke("delete_api_key", { keyId });
   },
 
   /**
    * 切换 API Key 启用状态
    */
   async toggleApiKey(keyId: string, enabled: boolean): Promise<ApiKeyDisplay> {
-    return invoke("toggle_api_key", { keyId, enabled });
+    return safeInvoke("toggle_api_key", { keyId, enabled });
   },
 
   /**
@@ -184,42 +184,42 @@ export const apiKeyProviderApi = {
     keyId: string,
     alias?: string,
   ): Promise<ApiKeyDisplay> {
-    return invoke("update_api_key_alias", { keyId, alias });
+    return safeInvoke("update_api_key_alias", { keyId, alias });
   },
 
   /**
    * 获取下一个可用的 API Key（用于 API 调用）
    */
   async getNextApiKey(providerId: string): Promise<string | null> {
-    return invoke("get_next_api_key", { providerId });
+    return safeInvoke("get_next_api_key", { providerId });
   },
 
   /**
    * 记录 API Key 使用
    */
   async recordUsage(keyId: string): Promise<void> {
-    return invoke("record_api_key_usage", { keyId });
+    return safeInvoke("record_api_key_usage", { keyId });
   },
 
   /**
    * 记录 API Key 错误
    */
   async recordError(keyId: string): Promise<void> {
-    return invoke("record_api_key_error", { keyId });
+    return safeInvoke("record_api_key_error", { keyId });
   },
 
   /**
    * 获取 UI 状态
    */
   async getUiState(key: string): Promise<string | null> {
-    return invoke("get_provider_ui_state", { key });
+    return safeInvoke("get_provider_ui_state", { key });
   },
 
   /**
    * 设置 UI 状态
    */
   async setUiState(key: string, value: string): Promise<void> {
-    return invoke("set_provider_ui_state", { key, value });
+    return safeInvoke("set_provider_ui_state", { key, value });
   },
 
   /**
@@ -227,21 +227,21 @@ export const apiKeyProviderApi = {
    * **Validates: Requirements 8.4**
    */
   async updateSortOrders(sortOrders: [string, number][]): Promise<void> {
-    return invoke("update_provider_sort_orders", { sortOrders });
+    return safeInvoke("update_provider_sort_orders", { sortOrders });
   },
 
   /**
    * 导出 Provider 配置
    */
   async exportConfig(includeKeys: boolean): Promise<string> {
-    return invoke("export_api_key_providers", { includeKeys });
+    return safeInvoke("export_api_key_providers", { includeKeys });
   },
 
   /**
    * 导入 Provider 配置
    */
   async importConfig(configJson: string): Promise<ImportResult> {
-    return invoke("import_api_key_providers", { configJson });
+    return safeInvoke("import_api_key_providers", { configJson });
   },
 
   // ============================================================================
@@ -252,7 +252,7 @@ export const apiKeyProviderApi = {
    * 获取需要迁移的旧 API Key 凭证列表
    */
   async getLegacyApiKeyCredentials(): Promise<LegacyApiKeyCredential[]> {
-    return invoke("get_legacy_api_key_credentials");
+    return safeInvoke("get_legacy_api_key_credentials");
   },
 
   /**
@@ -262,7 +262,7 @@ export const apiKeyProviderApi = {
   async migrateLegacyCredentials(
     deleteAfterMigration: boolean,
   ): Promise<LegacyMigrationResult> {
-    return invoke("migrate_legacy_api_key_credentials", {
+    return safeInvoke("migrate_legacy_api_key_credentials", {
       deleteAfterMigration,
     });
   },
@@ -271,7 +271,7 @@ export const apiKeyProviderApi = {
    * 删除单个旧的 API Key 凭证
    */
   async deleteLegacyCredential(uuid: string): Promise<boolean> {
-    return invoke("delete_legacy_api_key_credential", { uuid });
+    return safeInvoke("delete_legacy_api_key_credential", { uuid });
   },
 };
 

@@ -11,7 +11,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Package, Loader2, Download, type LucideIcon } from "lucide-react";
 import * as LucideIcons from "lucide-react";
-import { invoke } from "@tauri-apps/api/core";
+import { safeInvoke } from "@/lib/dev-bridge";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -301,10 +301,10 @@ export function ToolsPage({ onNavigate }: ToolsPageProps) {
     async (pluginId: string, enabled: boolean) => {
       try {
         if (enabled) {
-          await invoke("enable_plugin", { name: pluginId });
+          await safeInvoke("enable_plugin", { name: pluginId });
           toast.success("插件已启用");
         } else {
-          await invoke("disable_plugin", { name: pluginId });
+          await safeInvoke("disable_plugin", { name: pluginId });
           toast.success("插件已禁用");
         }
         loadPluginTools();
@@ -320,7 +320,7 @@ export function ToolsPage({ onNavigate }: ToolsPageProps) {
   const handleUninstallPlugin = useCallback(
     async (pluginId: string) => {
       try {
-        await invoke("uninstall_plugin", { pluginId });
+        await safeInvoke("uninstall_plugin", { pluginId });
         toast.success("插件已卸载");
         loadPluginTools();
       } catch (error) {

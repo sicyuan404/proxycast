@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { safeInvoke } from "@/lib/dev-bridge";
 
 // Retry configuration
 export interface RetryConfig {
@@ -25,28 +25,28 @@ export interface SwitchLogEntry {
 export const resilienceApi = {
   // Retry config
   async getRetryConfig(): Promise<RetryConfig> {
-    return invoke("get_retry_config");
+    return safeInvoke("get_retry_config");
   },
 
   async updateRetryConfig(config: RetryConfig): Promise<void> {
-    return invoke("update_retry_config", { config });
+    return safeInvoke("update_retry_config", { config });
   },
 
   // Failover config
   async getFailoverConfig(): Promise<FailoverConfig> {
-    return invoke("get_failover_config");
+    return safeInvoke("get_failover_config");
   },
 
   async updateFailoverConfig(config: FailoverConfig): Promise<void> {
-    return invoke("update_failover_config", { config });
+    return safeInvoke("update_failover_config", { config });
   },
 
   // Switch log
   async getSwitchLog(): Promise<SwitchLogEntry[]> {
-    return invoke("get_switch_log");
+    return safeInvoke("get_switch_log");
   },
 
   async clearSwitchLog(): Promise<void> {
-    return invoke("clear_switch_log");
+    return safeInvoke("clear_switch_log");
   },
 };

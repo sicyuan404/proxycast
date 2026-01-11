@@ -106,8 +106,8 @@ export function ScreenshotChatPage() {
     setIsLoading(true);
 
     try {
-      const { invoke } = await import("@tauri-apps/api/core");
-      await invoke("send_screenshot_chat", {
+      const { safeInvoke } = await import("@/lib/dev-bridge");
+      await safeInvoke("send_screenshot_chat", {
         message: inputValue,
         imagePath: imagePath,
       });

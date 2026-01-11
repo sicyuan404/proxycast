@@ -6,7 +6,7 @@
  */
 
 import { useState, useCallback, useEffect } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { safeInvoke } from "@/lib/dev-bridge";
 import {
   X,
   Play,
@@ -205,7 +205,7 @@ export function ReplayDialog({
       if (isBatchReplay && flowIds) {
         // 批量重放
         setProgress({ current: 0, total: flowIds.length });
-        const batchResult = await invoke<BatchReplayResult>(
+        const batchResult = await safeInvoke<BatchReplayResult>(
           "replay_flows_batch",
           {
             request: {
@@ -223,7 +223,7 @@ export function ReplayDialog({
           throw new Error("没有指定要重放的 Flow");
         }
 
-        const singleResult = await invoke<ReplayResult>("replay_flow", {
+        const singleResult = await safeInvoke<ReplayResult>("replay_flow", {
           request: {
             flow_id: flowId,
             config: replayConfig,

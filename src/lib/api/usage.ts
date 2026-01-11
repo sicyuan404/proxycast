@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { safeInvoke } from "@/lib/dev-bridge";
 
 /**
  * 用量信息接口
@@ -30,5 +30,5 @@ export const usageApi = {
    * @returns 用量信息
    */
   getKiroUsage: (credentialUuid: string): Promise<UsageInfo> =>
-    invoke("get_kiro_usage", { credentialUuid }),
+    safeInvoke("get_kiro_usage", { credentialUuid }),
 };

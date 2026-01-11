@@ -8,7 +8,8 @@
  * _Requirements: 9.6_
  */
 
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { safeListen } from "@/lib/dev-bridge";
+import type { UnlistenFn } from "@tauri-apps/api/event";
 import type {
   ControllerStatusEvent,
   ConnChangeEvent,
@@ -92,7 +93,7 @@ export type ConnChangeHandler = (event: ConnChangeEvent) => void;
 export async function subscribeControllerStatus(
   handler: ControllerStatusHandler,
 ): Promise<UnlistenFn> {
-  return listen<ControllerStatusEvent>(CONTROLLER_STATUS_EVENT, (event) => {
+  return safeListen<ControllerStatusEvent>(CONTROLLER_STATUS_EVENT, (event) => {
     handler(event.payload);
   });
 }
@@ -110,7 +111,7 @@ export async function subscribeControllerStatus(
 export async function subscribeConnChange(
   handler: ConnChangeHandler,
 ): Promise<UnlistenFn> {
-  return listen<RawConnChangeEvent>(CONN_CHANGE_EVENT, (event) => {
+  return safeListen<RawConnChangeEvent>(CONN_CHANGE_EVENT, (event) => {
     // 转换后端的 snake_case 字段为前端的 camelCase
     const payload = event.payload;
     const status: ConnStatus = {
@@ -144,7 +145,7 @@ export async function subscribeBlockControllerStatus(
   blockId: string,
   handler: ControllerStatusHandler,
 ): Promise<UnlistenFn> {
-  return listen<ControllerStatusEvent>(CONTROLLER_STATUS_EVENT, (event) => {
+  return safeListen<ControllerStatusEvent>(CONTROLLER_STATUS_EVENT, (event) => {
     if (event.payload.blockId === blockId) {
       handler(event.payload);
     }
@@ -162,7 +163,7 @@ export async function subscribeConnectionStatus(
   connection: string,
   handler: ConnChangeHandler,
 ): Promise<UnlistenFn> {
-  return listen<RawConnChangeEvent>(CONN_CHANGE_EVENT, (event) => {
+  return safeListen<RawConnChangeEvent>(CONN_CHANGE_EVENT, (event) => {
     if (event.payload.connection === connection) {
       // 转换字段名
       const payload = event.payload;

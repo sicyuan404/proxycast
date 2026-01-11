@@ -6,7 +6,7 @@
  * **Validates: Requirements 10.1, 10.2**
  */
 
-import { invoke } from "@tauri-apps/api/core";
+import { safeInvoke } from "@/lib/dev-bridge";
 
 /**
  * 通知设置
@@ -46,14 +46,14 @@ export class NotificationApi {
    * 获取通知配置
    */
   static async getConfig(): Promise<NotificationConfig> {
-    return await invoke<NotificationConfig>("get_notification_config");
+    return await safeInvoke<NotificationConfig>("get_notification_config");
   }
 
   /**
    * 更新通知配置
    */
   static async updateConfig(config: NotificationConfig): Promise<void> {
-    await invoke<void>("update_notification_config", { config });
+    await safeInvoke<void>("update_notification_config", { config });
   }
 }
 

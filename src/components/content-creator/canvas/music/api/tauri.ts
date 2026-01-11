@@ -4,7 +4,7 @@
  * @module components/content-creator/canvas/music/api/tauri
  */
 
-import { invoke } from "@tauri-apps/api/core";
+import { safeInvoke } from "@/lib/dev-bridge";
 
 /**
  * MIDI 分析结果
@@ -68,7 +68,7 @@ export interface PythonEnvInfo {
  * 检查 Python 环境
  */
 export async function checkPythonEnv(): Promise<PythonEnvInfo> {
-  return invoke<PythonEnvInfo>("check_python_env");
+  return safeInvoke<PythonEnvInfo>("check_python_env");
 }
 
 /**
@@ -78,7 +78,7 @@ export async function checkPythonEnv(): Promise<PythonEnvInfo> {
 export async function analyzeMidi(
   midiPath: string,
 ): Promise<MidiAnalysisResult> {
-  return invoke<MidiAnalysisResult>("analyze_midi", { midiPath });
+  return safeInvoke<MidiAnalysisResult>("analyze_midi", { midiPath });
 }
 
 /**
@@ -90,7 +90,7 @@ export async function convertMp3ToMidi(
   mp3Path: string,
   outputPath: string,
 ): Promise<string> {
-  return invoke<string>("convert_mp3_to_midi", { mp3Path, outputPath });
+  return safeInvoke<string>("convert_mp3_to_midi", { mp3Path, outputPath });
 }
 
 /**
@@ -98,14 +98,14 @@ export async function convertMp3ToMidi(
  * @param resourceName 资源文件名 (相对于 resources/music/ 目录)
  */
 export async function loadMusicResource(resourceName: string): Promise<string> {
-  return invoke<string>("load_music_resource", { resourceName });
+  return safeInvoke<string>("load_music_resource", { resourceName });
 }
 
 /**
  * 安装 Python 依赖
  */
 export async function installPythonDependencies(): Promise<string> {
-  return invoke<string>("install_python_dependencies");
+  return safeInvoke<string>("install_python_dependencies");
 }
 
 /**

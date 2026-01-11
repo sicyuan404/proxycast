@@ -1,5 +1,5 @@
 // 系统通知管理器
-import { invoke } from "@tauri-apps/api/core";
+import { safeInvoke } from "@/lib/dev-bridge";
 
 export interface NotificationConfig {
   title: string;
@@ -107,7 +107,7 @@ class NotificationManager {
   private async showNotification(config: NotificationConfig): Promise<void> {
     try {
       // 尝试使用Tauri的通知API
-      await invoke("show_notification", {
+      await safeInvoke("show_notification", {
         title: config.title,
         body: config.body,
         icon: config.icon,

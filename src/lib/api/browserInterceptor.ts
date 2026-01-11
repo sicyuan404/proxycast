@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { safeInvoke } from "@/lib/dev-bridge";
 
 // 类型定义
 export interface InterceptorState {
@@ -59,77 +59,79 @@ export interface InterceptorStatistics {
 export const browserInterceptorApi = {
   // 获取拦截器状态
   async getState(): Promise<InterceptorState | null> {
-    return await invoke("get_browser_interceptor_state");
+    return await safeInvoke("get_browser_interceptor_state");
   },
 
   // 启动拦截器
   async start(config: BrowserInterceptorConfig): Promise<string> {
-    return await invoke("start_browser_interceptor", { config });
+    return await safeInvoke("start_browser_interceptor", { config });
   },
 
   // 停止拦截器
   async stop(): Promise<string> {
-    return await invoke("stop_browser_interceptor");
+    return await safeInvoke("stop_browser_interceptor");
   },
 
   // 恢复正常浏览器行为
   async restoreNormalBehavior(): Promise<string> {
-    return await invoke("restore_normal_browser_behavior");
+    return await safeInvoke("restore_normal_browser_behavior");
   },
 
   // 临时禁用拦截器
   async temporaryDisable(durationSeconds: number): Promise<string> {
-    return await invoke("temporary_disable_interceptor", { durationSeconds });
+    return await safeInvoke("temporary_disable_interceptor", {
+      durationSeconds,
+    });
   },
 
   // 获取拦截的 URL 列表
   async getInterceptedUrls(): Promise<InterceptedUrl[]> {
-    return await invoke("get_intercepted_urls");
+    return await safeInvoke("get_intercepted_urls");
   },
 
   // 获取历史记录
   async getHistory(limit?: number): Promise<InterceptedUrl[]> {
-    return await invoke("get_interceptor_history", { limit });
+    return await safeInvoke("get_interceptor_history", { limit });
   },
 
   // 复制 URL 到剪贴板
   async copyUrlToClipboard(urlId: string): Promise<string> {
-    return await invoke("copy_intercepted_url_to_clipboard", { urlId });
+    return await safeInvoke("copy_intercepted_url_to_clipboard", { urlId });
   },
 
   // 在指纹浏览器中打开 URL
   async openInFingerprintBrowser(urlId: string): Promise<string> {
-    return await invoke("open_url_in_fingerprint_browser", { urlId });
+    return await safeInvoke("open_url_in_fingerprint_browser", { urlId });
   },
 
   // 忽略 URL
   async dismissUrl(urlId: string): Promise<string> {
-    return await invoke("dismiss_intercepted_url", { urlId });
+    return await safeInvoke("dismiss_intercepted_url", { urlId });
   },
 
   // 更新配置
   async updateConfig(config: BrowserInterceptorConfig): Promise<string> {
-    return await invoke("update_browser_interceptor_config", { config });
+    return await safeInvoke("update_browser_interceptor_config", { config });
   },
 
   // 获取默认配置
   async getDefaultConfig(): Promise<BrowserInterceptorConfig> {
-    return await invoke("get_default_browser_interceptor_config");
+    return await safeInvoke("get_default_browser_interceptor_config");
   },
 
   // 验证配置
   async validateConfig(config: BrowserInterceptorConfig): Promise<string> {
-    return await invoke("validate_browser_interceptor_config", { config });
+    return await safeInvoke("validate_browser_interceptor_config", { config });
   },
 
   // 检查是否正在运行
   async isRunning(): Promise<boolean> {
-    return await invoke("is_browser_interceptor_running");
+    return await safeInvoke("is_browser_interceptor_running");
   },
 
   // 获取统计信息
   async getStatistics(): Promise<InterceptorStatistics> {
-    return await invoke("get_browser_interceptor_statistics");
+    return await safeInvoke("get_browser_interceptor_statistics");
   },
 
   // 通知相关函数
@@ -138,14 +140,14 @@ export const browserInterceptorApi = {
     body: string,
     icon?: string,
   ): Promise<string> {
-    return await invoke("show_notification", { title, body, icon });
+    return await safeInvoke("show_notification", { title, body, icon });
   },
 
   async showUrlInterceptNotification(
     url: string,
     sourceProcess: string,
   ): Promise<string> {
-    return await invoke("show_url_intercept_notification", {
+    return await safeInvoke("show_url_intercept_notification", {
       url,
       sourceProcess,
     });
@@ -155,7 +157,7 @@ export const browserInterceptorApi = {
     message: string,
     notificationType: string,
   ): Promise<string> {
-    return await invoke("show_status_notification", {
+    return await safeInvoke("show_status_notification", {
       message,
       notificationType,
     });

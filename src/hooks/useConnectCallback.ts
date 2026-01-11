@@ -7,7 +7,7 @@
  */
 
 import { useCallback } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { safeInvoke } from "@/lib/dev-bridge";
 
 /**
  * 回调状态类型
@@ -98,7 +98,7 @@ export function useConnectCallback(): UseConnectCallbackReturn {
   const sendCallback = useCallback(
     async (params: SendCallbackParams): Promise<boolean> => {
       try {
-        const result = await invoke<boolean>("send_connect_callback", {
+        const result = await safeInvoke<boolean>("send_connect_callback", {
           relayId: params.relayId,
           apiKey: params.apiKey,
           status: params.status,

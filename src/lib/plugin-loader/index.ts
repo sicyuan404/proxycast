@@ -5,7 +5,7 @@
  */
 
 import React from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { safeInvoke } from "@/lib/dev-bridge";
 import type { ProxyCastPluginSDK as PluginSDK } from "@/lib/plugin-sdk/types";
 
 /**
@@ -91,7 +91,7 @@ function getPluginGlobalName(pluginPath: string): string {
  */
 async function readPluginFile(filePath: string): Promise<string> {
   try {
-    const content = await invoke<string>("read_plugin_ui_file", {
+    const content = await safeInvoke<string>("read_plugin_ui_file", {
       path: filePath,
     });
     return content;

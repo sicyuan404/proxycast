@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { toast } from "sonner";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { safeListen } from "@/lib/dev-bridge";
+import type { UnlistenFn } from "@tauri-apps/api/event";
 import {
   startAgentProcess,
   stopAgentProcess,
@@ -274,7 +275,7 @@ export function useAgentChat(options: UseAgentChatOptions = {}) {
     let unlisten: UnlistenFn | null = null;
 
     const setupListener = async () => {
-      unlisten = await listen<{
+      unlisten = await safeListen<{
         message: string;
         image_path: string | null;
         image_base64: string | null;
@@ -447,7 +448,7 @@ export function useAgentChat(options: UseAgentChatOptions = {}) {
       console.log(
         `[AgentChat] 设置事件监听器: ${eventName}, sessionId: ${activeSessionId}`,
       );
-      unlisten = await listen<StreamEvent>(eventName, (event) => {
+      unlisten = await safeListen<StreamEvent>(eventName, (event) => {
         console.log("[AgentChat] 收到事件:", eventName, event.payload);
         const data = parseStreamEvent(event.payload);
         if (!data) {

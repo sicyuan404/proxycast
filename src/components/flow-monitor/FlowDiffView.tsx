@@ -6,7 +6,7 @@
  */
 
 import React, { useState, useEffect, useCallback } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { safeInvoke } from "@/lib/dev-bridge";
 import {
   X,
   Loader2,
@@ -151,7 +151,7 @@ export function FlowDiffView({
       setError(null);
 
       // 调用后端计算差异
-      const result = await invoke<FlowDiffResult>("diff_flows", {
+      const result = await safeInvoke<FlowDiffResult>("diff_flows", {
         request: {
           left_flow_id: leftFlowId,
           right_flow_id: rightFlowId,
@@ -163,13 +163,13 @@ export function FlowDiffView({
 
       // 如果没有提供 Flow，加载它们用于显示
       if (!initialLeftFlow) {
-        const left = await invoke<LLMFlow | null>("get_flow_detail", {
+        const left = await safeInvoke<LLMFlow | null>("get_flow_detail", {
           flowId: leftFlowId,
         });
         setLeftFlow(left);
       }
       if (!initialRightFlow) {
-        const right = await invoke<LLMFlow | null>("get_flow_detail", {
+        const right = await safeInvoke<LLMFlow | null>("get_flow_detail", {
           flowId: rightFlowId,
         });
         setRightFlow(right);

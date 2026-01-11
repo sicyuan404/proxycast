@@ -4,8 +4,8 @@
  * @module lib/plugin-sdk/sdk
  */
 
-import { invoke } from "@tauri-apps/api/core";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { safeInvoke, safeListen } from "@/lib/dev-bridge";
+import type { UnlistenFn } from "@tauri-apps/api/event";
 import type {
   ProxyCastPluginSDK,
   PluginId,
@@ -95,11 +95,14 @@ function createDatabaseApi(pluginId: PluginId): DatabaseApi {
       params?: unknown[],
     ): Promise<QueryResult<T>> {
       try {
-        const result = await invoke<QueryResult<T>>("plugin_database_query", {
-          pluginId,
-          sql,
-          params: params || [],
-        });
+        const result = await safeInvoke<QueryResult<T>>(
+          "plugin_database_query",
+          {
+            pluginId,
+            sql,
+            params: params || [],
+          },
+        );
         return result;
       } catch (error) {
         console.error(`[Plugin ${pluginId}] Database query error:`, error);
@@ -109,11 +112,14 @@ function createDatabaseApi(pluginId: PluginId): DatabaseApi {
 
     async execute(sql: string, params?: unknown[]): Promise<ExecuteResult> {
       try {
-        const result = await invoke<ExecuteResult>("plugin_database_execute", {
-          pluginId,
-          sql,
-          params: params || [],
-        });
+        const result = await safeInvoke<ExecuteResult>(
+          "plugin_database_execute",
+          {
+            pluginId,
+            sql,
+            params: params || [],
+          },
+        );
         return result;
       } catch (error) {
         console.error(`[Plugin ${pluginId}] Database execute error:`, error);
@@ -134,7 +140,7 @@ function createHttpApi(pluginId: PluginId): HttpApi {
       options?: HttpRequestOptions,
     ): Promise<HttpResponse> {
       try {
-        const result = await invoke<HttpResponse>("plugin_http_request", {
+        const result = await safeInvoke<HttpResponse>("plugin_http_request", {
           pluginId,
           url,
           method: options?.method || "GET",
@@ -159,7 +165,7 @@ function createCryptoApi(pluginId: PluginId): CryptoApi {
   return {
     async encrypt(data: string): Promise<string> {
       try {
-        const result = await invoke<{ encrypted: string }>(
+        const result = await safeInvoke<{ encrypted: string }>(
           "plugin_crypto_encrypt",
           {
             pluginId,
@@ -175,7 +181,7 @@ function createCryptoApi(pluginId: PluginId): CryptoApi {
 
     async decrypt(data: string): Promise<string> {
       try {
-        const result = await invoke<{ decrypted: string }>(
+        const result = await safeInvoke<{ decrypted: string }>(
           "plugin_crypto_decrypt",
           {
             pluginId,
@@ -201,7 +207,7 @@ function createNotificationApi(pluginId: PluginId): NotificationApi {
     globalEventBus.emit("notification", { level, message, pluginId });
 
     // 同时调用后端记录日志
-    invoke("plugin_notification", { pluginId, level, message }).catch(
+    safeInvoke("plugin_notification", { pluginId, level, message }).catch(
       (error) => {
         console.error(`[Plugin ${pluginId}] Notification error:`, error);
       },
@@ -238,7 +244,7 @@ function createEventsApi(pluginId: PluginId): EventsApi {
 
       // 如果是跨插件事件，发送到后端
       if (event.startsWith("global:")) {
-        invoke("plugin_event_emit", { pluginId, event, data }).catch(
+        safeInvoke("plugin_event_emit", { pluginId, event, data }).catch(
           (error) => {
             console.error(`[Plugin ${pluginId}] Event emit error:`, error);
           },
@@ -264,7 +270,7 @@ function createStorageApi(pluginId: PluginId): StorageApi {
   return {
     async get(key: string): Promise<string | null> {
       try {
-        const result = await invoke<{ value: string | null }>(
+        const result = await safeInvoke<{ value: string | null }>(
           "plugin_storage_get",
           {
             pluginId,
@@ -280,7 +286,7 @@ function createStorageApi(pluginId: PluginId): StorageApi {
 
     async set(key: string, value: string): Promise<void> {
       try {
-        await invoke("plugin_storage_set", { pluginId, key, value });
+        await safeInvoke("plugin_storage_set", { pluginId, key, value });
       } catch (error) {
         console.error(`[Plugin ${pluginId}] Storage set error:`, error);
         throw error;
@@ -289,7 +295,7 @@ function createStorageApi(pluginId: PluginId): StorageApi {
 
     async delete(key: string): Promise<void> {
       try {
-        await invoke("plugin_storage_delete", { pluginId, key });
+        await safeInvoke("plugin_storage_delete", { pluginId, key });
       } catch (error) {
         console.error(`[Plugin ${pluginId}] Storage delete error:`, error);
         throw error;
@@ -298,9 +304,12 @@ function createStorageApi(pluginId: PluginId): StorageApi {
 
     async keys(): Promise<string[]> {
       try {
-        const result = await invoke<{ keys: string[] }>("plugin_storage_keys", {
-          pluginId,
-        });
+        const result = await safeInvoke<{ keys: string[] }>(
+          "plugin_storage_keys",
+          {
+            pluginId,
+          },
+        );
         return result.keys;
       } catch (error) {
         console.error(`[Plugin ${pluginId}] Storage keys error:`, error);
@@ -318,7 +327,7 @@ function createCredentialApi(pluginId: PluginId): CredentialApi {
   return {
     async list(): Promise<CredentialInfo[]> {
       try {
-        const result = await invoke<{ credentials: CredentialInfo[] }>(
+        const result = await safeInvoke<{ credentials: CredentialInfo[] }>(
           "plugin_credential_list",
           { pluginId },
         );
@@ -331,7 +340,7 @@ function createCredentialApi(pluginId: PluginId): CredentialApi {
 
     async get(id: CredentialId): Promise<CredentialInfo | null> {
       try {
-        const result = await invoke<{ credential: CredentialInfo | null }>(
+        const result = await safeInvoke<{ credential: CredentialInfo | null }>(
           "plugin_credential_get",
           { pluginId, credentialId: id },
         );
@@ -347,7 +356,7 @@ function createCredentialApi(pluginId: PluginId): CredentialApi {
       config: Record<string, unknown>,
     ): Promise<CredentialId> {
       try {
-        const result = await invoke<{ credentialId: CredentialId }>(
+        const result = await safeInvoke<{ credentialId: CredentialId }>(
           "plugin_credential_create",
           { pluginId, authType, config },
         );
@@ -363,7 +372,7 @@ function createCredentialApi(pluginId: PluginId): CredentialApi {
       config: Record<string, unknown>,
     ): Promise<void> {
       try {
-        await invoke("plugin_credential_update", {
+        await safeInvoke("plugin_credential_update", {
           pluginId,
           credentialId: id,
           config,
@@ -376,7 +385,7 @@ function createCredentialApi(pluginId: PluginId): CredentialApi {
 
     async delete(id: CredentialId): Promise<void> {
       try {
-        await invoke("plugin_credential_delete", {
+        await safeInvoke("plugin_credential_delete", {
           pluginId,
           credentialId: id,
         });
@@ -390,7 +399,7 @@ function createCredentialApi(pluginId: PluginId): CredentialApi {
       id: CredentialId,
     ): Promise<{ valid: boolean; message?: string }> {
       try {
-        const result = await invoke<{ valid: boolean; message?: string }>(
+        const result = await safeInvoke<{ valid: boolean; message?: string }>(
           "plugin_credential_validate",
           { pluginId, credentialId: id },
         );
@@ -403,7 +412,7 @@ function createCredentialApi(pluginId: PluginId): CredentialApi {
 
     async refresh(id: CredentialId): Promise<void> {
       try {
-        await invoke("plugin_credential_refresh", {
+        await safeInvoke("plugin_credential_refresh", {
           pluginId,
           credentialId: id,
         });
@@ -423,7 +432,7 @@ function createPluginConfigApi(pluginId: PluginId): PluginConfigApi {
   return {
     async get<T = Record<string, unknown>>(): Promise<T> {
       try {
-        const result = await invoke<{ config: T }>("plugin_config_get", {
+        const result = await safeInvoke<{ config: T }>("plugin_config_get", {
           pluginId,
         });
         return result.config;
@@ -435,7 +444,7 @@ function createPluginConfigApi(pluginId: PluginId): PluginConfigApi {
 
     async set(config: Record<string, unknown>): Promise<void> {
       try {
-        await invoke("plugin_config_set", { pluginId, config });
+        await safeInvoke("plugin_config_set", { pluginId, config });
       } catch (error) {
         console.error(`[Plugin ${pluginId}] Config set error:`, error);
         throw error;
@@ -563,7 +572,7 @@ async function initTauriEventListener(): Promise<void> {
   tauriEventInitialized = true;
 
   try {
-    _tauriEventUnlisten = await listen<RpcNotificationPayload>(
+    _tauriEventUnlisten = await safeListen<RpcNotificationPayload>(
       "plugin-rpc-notification",
       (event) => {
         const { plugin_id, method, params } = event.payload;
@@ -599,7 +608,7 @@ function createRpcApi(pluginId: PluginId): RpcApi {
   return {
     async call<T = unknown>(method: string, params?: unknown): Promise<T> {
       try {
-        const result = await invoke<T>("plugin_rpc_call", {
+        const result = await safeInvoke<T>("plugin_rpc_call", {
           pluginId,
           method,
           params: params ?? null,
@@ -634,7 +643,7 @@ function createRpcApi(pluginId: PluginId): RpcApi {
 
     async connect(): Promise<void> {
       try {
-        await invoke("plugin_rpc_connect", { pluginId });
+        await safeInvoke("plugin_rpc_connect", { pluginId });
         rpcConnectionStatus.set(pluginId, true);
         console.log(`[Plugin ${pluginId}] RPC connected`);
       } catch (error) {
@@ -645,7 +654,7 @@ function createRpcApi(pluginId: PluginId): RpcApi {
 
     async disconnect(): Promise<void> {
       try {
-        await invoke("plugin_rpc_disconnect", { pluginId });
+        await safeInvoke("plugin_rpc_disconnect", { pluginId });
         rpcConnectionStatus.set(pluginId, false);
         notificationManager.clear();
         console.log(`[Plugin ${pluginId}] RPC disconnected`);

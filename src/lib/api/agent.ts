@@ -5,7 +5,7 @@
  * 支持流式输出和工具调用
  */
 
-import { invoke } from "@tauri-apps/api/core";
+import { safeInvoke } from "@/lib/dev-bridge";
 
 // ============================================================
 // 流式事件类型 (Requirements: 9.1, 9.2, 9.3)
@@ -227,21 +227,21 @@ export interface ImageInput {
  * 启动 Agent（初始化原生 Agent）
  */
 export async function startAgentProcess(): Promise<AgentProcessStatus> {
-  return await invoke("agent_start_process", {});
+  return await safeInvoke("agent_start_process", {});
 }
 
 /**
  * 停止 Agent
  */
 export async function stopAgentProcess(): Promise<void> {
-  return await invoke("agent_stop_process");
+  return await safeInvoke("agent_stop_process");
 }
 
 /**
  * 获取 Agent 状态
  */
 export async function getAgentProcessStatus(): Promise<AgentProcessStatus> {
-  return await invoke("agent_get_process_status");
+  return await safeInvoke("agent_get_process_status");
 }
 
 /**
@@ -262,7 +262,7 @@ export async function createAgentSession(
   systemPrompt?: string,
   skills?: SkillInfo[],
 ): Promise<CreateSessionResponse> {
-  return await invoke("agent_create_session", {
+  return await safeInvoke("agent_create_session", {
     providerType,
     model,
     systemPrompt,
@@ -281,7 +281,7 @@ export async function sendAgentMessage(
   webSearch?: boolean,
   thinking?: boolean,
 ): Promise<string> {
-  return await invoke("agent_send_message", {
+  return await safeInvoke("agent_send_message", {
     sessionId,
     message,
     images,
@@ -315,7 +315,7 @@ export async function sendAgentMessageStream(
   provider?: string,
   terminalMode?: boolean,
 ): Promise<void> {
-  return await invoke("native_agent_chat_stream", {
+  return await safeInvoke("native_agent_chat_stream", {
     message,
     eventName,
     sessionId,
@@ -330,14 +330,14 @@ export async function sendAgentMessageStream(
  * 获取会话列表
  */
 export async function listAgentSessions(): Promise<SessionInfo[]> {
-  return await invoke("agent_list_sessions");
+  return await safeInvoke("agent_list_sessions");
 }
 
 /**
  * 获取会话详情
  */
 export async function getAgentSession(sessionId: string): Promise<SessionInfo> {
-  return await invoke("agent_get_session", {
+  return await safeInvoke("agent_get_session", {
     sessionId,
   });
 }
@@ -346,7 +346,7 @@ export async function getAgentSession(sessionId: string): Promise<SessionInfo> {
  * 删除会话
  */
 export async function deleteAgentSession(sessionId: string): Promise<void> {
-  return await invoke("agent_delete_session", {
+  return await safeInvoke("agent_delete_session", {
     sessionId,
   });
 }
@@ -390,7 +390,7 @@ export interface AgentMessage {
 export async function getAgentSessionMessages(
   sessionId: string,
 ): Promise<AgentMessage[]> {
-  return await invoke("agent_get_session_messages", {
+  return await safeInvoke("agent_get_session_messages", {
     sessionId,
   });
 }
@@ -433,7 +433,7 @@ export async function initGooseAgent(
   providerName: string,
   modelName: string,
 ): Promise<GooseAgentStatus> {
-  return await invoke("goose_agent_init", {
+  return await safeInvoke("goose_agent_init", {
     providerName,
     modelName,
   });
@@ -443,14 +443,14 @@ export async function initGooseAgent(
  * 获取 Goose Agent 状态
  */
 export async function getGooseAgentStatus(): Promise<GooseAgentStatus> {
-  return await invoke("goose_agent_status");
+  return await safeInvoke("goose_agent_status");
 }
 
 /**
  * 重置 Goose Agent
  */
 export async function resetGooseAgent(): Promise<void> {
-  return await invoke("goose_agent_reset");
+  return await safeInvoke("goose_agent_reset");
 }
 
 /**
@@ -459,7 +459,7 @@ export async function resetGooseAgent(): Promise<void> {
 export async function createGooseSession(
   name?: string,
 ): Promise<GooseCreateSessionResponse> {
-  return await invoke("goose_agent_create_session", { name });
+  return await safeInvoke("goose_agent_create_session", { name });
 }
 
 /**
@@ -472,7 +472,7 @@ export async function sendGooseMessage(
   message: string,
   eventName: string,
 ): Promise<void> {
-  return await invoke("goose_agent_send_message", {
+  return await safeInvoke("goose_agent_send_message", {
     request: {
       session_id: sessionId,
       message,
@@ -487,14 +487,14 @@ export async function sendGooseMessage(
 export async function extendGooseSystemPrompt(
   instruction: string,
 ): Promise<void> {
-  return await invoke("goose_agent_extend_system_prompt", { instruction });
+  return await safeInvoke("goose_agent_extend_system_prompt", { instruction });
 }
 
 /**
  * 获取 Goose 支持的 Provider 列表
  */
 export async function listGooseProviders(): Promise<GooseProviderInfo[]> {
-  return await invoke("goose_agent_list_providers");
+  return await safeInvoke("goose_agent_list_providers");
 }
 
 // ============================================================
@@ -541,7 +541,7 @@ export interface TerminalCommandResponse {
 export async function sendTerminalCommandResponse(
   response: TerminalCommandResponse,
 ): Promise<void> {
-  return await invoke("agent_terminal_command_response", {
+  return await safeInvoke("agent_terminal_command_response", {
     requestId: response.request_id,
     success: response.success,
     output: response.output,
@@ -599,7 +599,7 @@ export interface TermScrollbackResponse {
 export async function sendTermScrollbackResponse(
   response: TermScrollbackResponse,
 ): Promise<void> {
-  return await invoke("agent_term_scrollback_response", {
+  return await safeInvoke("agent_term_scrollback_response", {
     requestId: response.request_id,
     success: response.success,
     totalLines: response.total_lines,

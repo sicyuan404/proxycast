@@ -7,8 +7,8 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { listen, UnlistenFn } from "@tauri-apps/api/event";
-import { invoke } from "@tauri-apps/api/core";
+import { safeInvoke, safeListen } from "@/lib/dev-bridge";
+import type { UnlistenFn } from "@tauri-apps/api/event";
 import { onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import {
   showDeepLinkError,
@@ -284,7 +284,7 @@ export function useDeepLink(): UseDeepLinkReturn {
 
     try {
       // 调用后端保存 API Key（添加到 API Key Provider 系统）
-      const result = await invoke<SaveApiKeyResult>("save_relay_api_key", {
+      const result = await safeInvoke<SaveApiKeyResult>("save_relay_api_key", {
         relayId: connectPayload.relay,
         apiKey: connectPayload.key,
         name: connectPayload.name ?? null,
@@ -386,7 +386,7 @@ export function useDeepLink(): UseDeepLinkReturn {
             if (url.startsWith("proxycast://connect")) {
               try {
                 // 调用后端处理 Deep Link
-                const result = await invoke<DeepLinkResult>(
+                const result = await safeInvoke<DeepLinkResult>(
                   "handle_deep_link",
                   { url },
                 );
@@ -405,7 +405,7 @@ export function useDeepLink(): UseDeepLinkReturn {
         });
 
         // 监听后端发送的 deep-link-connect 事件（兼容旧逻辑）
-        const unlisten = await listen<DeepLinkResult>(
+        const unlisten = await safeListen<DeepLinkResult>(
           "deep-link-connect",
           (event) => {
             if (mounted) {
@@ -416,14 +416,14 @@ export function useDeepLink(): UseDeepLinkReturn {
 
         // 监听 deep-link-error 事件
         // _Requirements: 7.1_
-        const unlistenError = await listen<{ code: string; message: string }>(
-          "deep-link-error",
-          (event) => {
-            if (mounted) {
-              handleDeepLinkError(event.payload);
-            }
-          },
-        );
+        const unlistenError = await safeListen<{
+          code: string;
+          message: string;
+        }>("deep-link-error", (event) => {
+          if (mounted) {
+            handleDeepLinkError(event.payload);
+          }
+        });
 
         if (mounted) {
           unlistenRef.current = unlisten;

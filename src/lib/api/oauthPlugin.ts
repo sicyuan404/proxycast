@@ -4,7 +4,7 @@
  * @module lib/api/oauthPlugin
  */
 
-import { invoke } from "@tauri-apps/api/core";
+import { safeInvoke } from "@/lib/dev-bridge";
 
 // ============================================================================
 // 类型定义
@@ -109,7 +109,7 @@ export interface PluginUpdate {
  */
 export async function initOAuthPluginSystem(): Promise<void> {
   try {
-    await invoke("init_oauth_plugin_system");
+    await safeInvoke("init_oauth_plugin_system");
   } catch (error) {
     console.error("[OAuthPlugin API] Failed to init plugin system:", error);
     throw error;
@@ -124,7 +124,7 @@ export async function listOAuthPlugins(): Promise<OAuthPluginInfo[]> {
     // 先尝试初始化系统（如果已初始化会直接返回）
     await initOAuthPluginSystem();
 
-    const result = await invoke<OAuthPluginInfo[]>("list_oauth_plugins");
+    const result = await safeInvoke<OAuthPluginInfo[]>("list_oauth_plugins");
     return result;
   } catch (error) {
     console.error("[OAuthPlugin API] Failed to list plugins:", error);
@@ -139,7 +139,7 @@ export async function getOAuthPlugin(
   pluginId: string,
 ): Promise<OAuthPluginInfo | null> {
   try {
-    const result = await invoke<{ plugin: OAuthPluginInfo | null }>(
+    const result = await safeInvoke<{ plugin: OAuthPluginInfo | null }>(
       "get_oauth_plugin",
       { pluginId },
     );
@@ -155,7 +155,7 @@ export async function getOAuthPlugin(
  */
 export async function enableOAuthPlugin(pluginId: string): Promise<void> {
   try {
-    await invoke("enable_oauth_plugin", { pluginId });
+    await safeInvoke("enable_oauth_plugin", { pluginId });
   } catch (error) {
     console.error("[OAuthPlugin API] Failed to enable plugin:", error);
     throw error;
@@ -167,7 +167,7 @@ export async function enableOAuthPlugin(pluginId: string): Promise<void> {
  */
 export async function disableOAuthPlugin(pluginId: string): Promise<void> {
   try {
-    await invoke("disable_oauth_plugin", { pluginId });
+    await safeInvoke("disable_oauth_plugin", { pluginId });
   } catch (error) {
     console.error("[OAuthPlugin API] Failed to disable plugin:", error);
     throw error;
@@ -181,7 +181,7 @@ export async function installOAuthPlugin(
   source: PluginSource,
 ): Promise<InstallResult> {
   try {
-    const result = await invoke<InstallResult>("install_oauth_plugin", {
+    const result = await safeInvoke<InstallResult>("install_oauth_plugin", {
       source,
     });
     return result;
@@ -199,7 +199,7 @@ export async function installOAuthPlugin(
  */
 export async function uninstallOAuthPlugin(pluginId: string): Promise<void> {
   try {
-    await invoke("uninstall_oauth_plugin", { pluginId });
+    await safeInvoke("uninstall_oauth_plugin", { pluginId });
   } catch (error) {
     console.error("[OAuthPlugin API] Failed to uninstall plugin:", error);
     throw error;
@@ -211,7 +211,7 @@ export async function uninstallOAuthPlugin(pluginId: string): Promise<void> {
  */
 export async function checkOAuthPluginUpdates(): Promise<PluginUpdate[]> {
   try {
-    const result = await invoke<{ updates: PluginUpdate[] }>(
+    const result = await safeInvoke<{ updates: PluginUpdate[] }>(
       "check_oauth_plugin_updates",
     );
     return result.updates;
@@ -226,7 +226,7 @@ export async function checkOAuthPluginUpdates(): Promise<PluginUpdate[]> {
  */
 export async function updateOAuthPlugin(pluginId: string): Promise<void> {
   try {
-    await invoke("update_oauth_plugin", { pluginId });
+    await safeInvoke("update_oauth_plugin", { pluginId });
   } catch (error) {
     console.error("[OAuthPlugin API] Failed to update plugin:", error);
     throw error;
@@ -238,7 +238,7 @@ export async function updateOAuthPlugin(pluginId: string): Promise<void> {
  */
 export async function reloadOAuthPlugins(): Promise<void> {
   try {
-    await invoke("reload_oauth_plugins");
+    await safeInvoke("reload_oauth_plugins");
   } catch (error) {
     console.error("[OAuthPlugin API] Failed to reload plugins:", error);
     throw error;
@@ -252,7 +252,7 @@ export async function getOAuthPluginConfig(
   pluginId: string,
 ): Promise<Record<string, unknown>> {
   try {
-    const result = await invoke<{ config: Record<string, unknown> }>(
+    const result = await safeInvoke<{ config: Record<string, unknown> }>(
       "get_oauth_plugin_config",
       { pluginId },
     );
@@ -271,7 +271,7 @@ export async function updateOAuthPluginConfig(
   config: Record<string, unknown>,
 ): Promise<void> {
   try {
-    await invoke("update_oauth_plugin_config", { pluginId, config });
+    await safeInvoke("update_oauth_plugin_config", { pluginId, config });
   } catch (error) {
     console.error("[OAuthPlugin API] Failed to update plugin config:", error);
     throw error;
@@ -284,7 +284,7 @@ export async function updateOAuthPluginConfig(
  */
 export async function scanOAuthPluginDirectory(): Promise<string[]> {
   try {
-    const result = await invoke<{ paths: string[] }>(
+    const result = await safeInvoke<{ paths: string[] }>(
       "scan_oauth_plugin_directory",
     );
     return result.paths;

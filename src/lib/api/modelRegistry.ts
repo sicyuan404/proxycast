@@ -4,7 +4,7 @@
  * 提供与后端 ModelRegistryService 交互的 API
  */
 
-import { invoke } from "@tauri-apps/api/core";
+import { safeInvoke } from "@/lib/dev-bridge";
 import type {
   EnhancedModelMetadata,
   ModelSyncState,
@@ -17,7 +17,7 @@ import type {
  * 获取所有模型
  */
 export async function getModelRegistry(): Promise<EnhancedModelMetadata[]> {
-  return invoke("get_model_registry");
+  return safeInvoke("get_model_registry");
 }
 
 /**
@@ -25,7 +25,7 @@ export async function getModelRegistry(): Promise<EnhancedModelMetadata[]> {
  * @returns 加载的模型数量
  */
 export async function refreshModelRegistry(): Promise<number> {
-  return invoke("refresh_model_registry");
+  return safeInvoke("refresh_model_registry");
 }
 
 /**
@@ -37,14 +37,14 @@ export async function searchModels(
   query: string,
   limit?: number,
 ): Promise<EnhancedModelMetadata[]> {
-  return invoke("search_models", { query, limit });
+  return safeInvoke("search_models", { query, limit });
 }
 
 /**
  * 获取用户模型偏好
  */
 export async function getModelPreferences(): Promise<UserModelPreference[]> {
-  return invoke("get_model_preferences");
+  return safeInvoke("get_model_preferences");
 }
 
 /**
@@ -53,7 +53,7 @@ export async function getModelPreferences(): Promise<UserModelPreference[]> {
  * @returns 新的收藏状态
  */
 export async function toggleModelFavorite(modelId: string): Promise<boolean> {
-  return invoke("toggle_model_favorite", { modelId });
+  return safeInvoke("toggle_model_favorite", { modelId });
 }
 
 /**
@@ -61,7 +61,7 @@ export async function toggleModelFavorite(modelId: string): Promise<boolean> {
  * @param modelId 模型 ID
  */
 export async function hideModel(modelId: string): Promise<void> {
-  return invoke("hide_model", { modelId });
+  return safeInvoke("hide_model", { modelId });
 }
 
 /**
@@ -69,14 +69,14 @@ export async function hideModel(modelId: string): Promise<void> {
  * @param modelId 模型 ID
  */
 export async function recordModelUsage(modelId: string): Promise<void> {
-  return invoke("record_model_usage", { modelId });
+  return safeInvoke("record_model_usage", { modelId });
 }
 
 /**
  * 获取模型同步状态
  */
 export async function getModelSyncState(): Promise<ModelSyncState> {
-  return invoke("get_model_sync_state");
+  return safeInvoke("get_model_sync_state");
 }
 
 /**
@@ -86,7 +86,7 @@ export async function getModelSyncState(): Promise<ModelSyncState> {
 export async function getModelsForProvider(
   providerId: string,
 ): Promise<EnhancedModelMetadata[]> {
-  return invoke("get_models_for_provider", { providerId });
+  return safeInvoke("get_models_for_provider", { providerId });
 }
 
 /**
@@ -96,7 +96,7 @@ export async function getModelsForProvider(
 export async function getModelsByTier(
   tier: ModelTier,
 ): Promise<EnhancedModelMetadata[]> {
-  return invoke("get_models_by_tier", { tier });
+  return safeInvoke("get_models_by_tier", { tier });
 }
 
 /**
@@ -107,7 +107,7 @@ export async function getModelsByTier(
 export async function getProviderAliasConfig(
   provider: string,
 ): Promise<ProviderAliasConfig | null> {
-  return invoke("get_provider_alias_config", { provider });
+  return safeInvoke("get_provider_alias_config", { provider });
 }
 
 /**
@@ -116,7 +116,7 @@ export async function getProviderAliasConfig(
 export async function getAllAliasConfigs(): Promise<
   Record<string, ProviderAliasConfig>
 > {
-  return invoke("get_all_alias_configs");
+  return safeInvoke("get_all_alias_configs");
 }
 
 /**
