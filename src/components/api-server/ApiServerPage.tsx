@@ -880,7 +880,13 @@ export function ApiServerPage() {
                       </Select.Icon>
                     </Select.Trigger>
                     <Select.Portal>
-                      <Select.Content className="relative z-50 min-w-[200px] overflow-hidden rounded-md border border-border bg-white dark:bg-gray-900 text-foreground shadow-lg animate-in fade-in-80 data-[side=bottom]:slide-in-from-top-2 data-[side=top]:slide-in-from-bottom-2">
+                      <Select.Content
+                        position="popper"
+                        side="bottom"
+                        align="start"
+                        sideOffset={4}
+                        className="z-50 min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-md border border-border bg-white dark:bg-gray-900 text-foreground shadow-lg"
+                      >
                         <Select.Viewport className="p-1 bg-white dark:bg-gray-900">
                           <Select.Item
                             value="127.0.0.1"
@@ -1170,8 +1176,14 @@ export function ApiServerPage() {
                   </Select.Icon>
                 </Select.Trigger>
                 <Select.Portal>
-                  <Select.Content className="relative z-50 max-h-[300px] min-w-[300px] overflow-hidden rounded-md border border-border bg-white dark:bg-gray-900 text-foreground shadow-lg animate-in fade-in-80 data-[side=bottom]:slide-in-from-top-2 data-[side=top]:slide-in-from-bottom-2">
-                    <Select.Viewport className="p-1 max-h-[280px] overflow-y-auto">
+                  <Select.Content
+                    position="popper"
+                    side="bottom"
+                    align="start"
+                    sideOffset={4}
+                    className="z-50 max-h-[300px] min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-md border border-border bg-white dark:bg-gray-900 text-foreground shadow-lg"
+                  >
+                    <Select.Viewport className="p-1">
                       {allModels.map((model) => (
                         <Select.Item
                           key={model.id}
