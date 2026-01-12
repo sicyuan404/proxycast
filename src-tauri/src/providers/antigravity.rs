@@ -214,19 +214,31 @@ pub const ANTIGRAVITY_MODELS_FALLBACK: &[&str] = &[
     "gemini-3-pro-preview",
     "gemini-3-flash-preview",
     "gemini-2.5-flash-preview",
+    "gemini-2.5-flash",
+    "gemini-2.5-pro",
+    "gemini-3-flash",
+    "gemini-3-pro-high",
+    "gemini-3-pro-low",
     "gemini-claude-sonnet-4-5",
     "gemini-claude-sonnet-4-5-thinking",
     "gemini-claude-opus-4-5-thinking",
+    "claude-sonnet-4-5",
+    "claude-sonnet-4-5-thinking",
+    "claude-opus-4-5-thinking",
 ];
 
 /// 模型别名映射（fallback，当无法从 models 仓库获取时使用）
 /// 格式：用户友好名称 -> 内部 API 名称
 pub const ANTIGRAVITY_ALIAS_FALLBACK: &[(&str, &str)] = &[
+    // 需要映射的模型
     ("gemini-2.5-computer-use-preview-10-2025", "rev19-uic3-1p"),
     ("gemini-3-pro-image-preview", "gemini-3-pro-image"),
-    ("gemini-3-pro-preview", "gemini-3-pro-high"),
+    // Gemini 3 preview 模型映射到正式名称
     ("gemini-3-flash-preview", "gemini-3-flash"),
+    ("gemini-3-pro-preview", "gemini-3-pro-high"),
+    // Gemini 2.5 preview 模型映射
     ("gemini-2.5-flash-preview", "gemini-2.5-flash"),
+    // Claude via Antigravity
     ("gemini-claude-sonnet-4-5", "claude-sonnet-4-5"),
     (
         "gemini-claude-sonnet-4-5-thinking",

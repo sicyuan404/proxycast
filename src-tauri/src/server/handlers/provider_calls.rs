@@ -67,6 +67,7 @@ use crate::server_utils::{
     build_anthropic_response, build_anthropic_stream_response, build_error_response,
     build_error_response_with_status, parse_cw_response, safe_truncate, CWParsedResponse,
 };
+use crate::session::store_thought_signature;
 use crate::stream::{PipelineConfig, StreamPipeline};
 use crate::streaming::traits::StreamingProvider;
 use crate::streaming::{
@@ -3111,6 +3112,21 @@ fn extract_content_from_json(json: &serde_json::Value) -> Option<(String, Vec<(S
                     .get("thought")
                     .and_then(|t| t.as_bool())
                     .unwrap_or(false);
+
+                // 捕获 thoughtSignature 到全局存储（用于后续请求）
+                if let Some(sig) = part
+                    .get("thoughtSignature")
+                    .or_else(|| part.get("thought_signature"))
+                    .and_then(|s| s.as_str())
+                {
+                    if !sig.is_empty() {
+                        eprintln!(
+                            "[ANTIGRAVITY_PARSE] 捕获 thoughtSignature (长度: {})",
+                            sig.len()
+                        );
+                        store_thought_signature(sig);
+                    }
+                }
 
                 // 跳过纯 thoughtSignature 部分
                 let has_thought_signature = part
