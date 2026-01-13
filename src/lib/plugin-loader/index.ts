@@ -43,6 +43,10 @@ const PLUGIN_GLOBAL_NAMES: Record<string, string> = {
   "gemini-provider": "GeminiProviderPlugin",
   "antigravity-provider": "AntigravityProviderPlugin",
   "codex-provider": "CodexProviderPlugin",
+  "machine-id-tool": "MachineIdToolPlugin",
+  "browser-interception": "BrowserInterceptionPlugin",
+  "flow-monitor": "FlowMonitorPlugin",
+  "config-switch": "ConfigSwitchPlugin",
 };
 
 /**
@@ -71,14 +75,19 @@ function getPluginGlobalName(pluginPath: string): string {
   }
 
   // 尝试从插件 ID 推断全局变量名
-  // 例如: my-plugin -> MyPlugin
+  // 例如: my-plugin -> MyPluginPlugin
+  // 注意: 插件构建时通常会添加 Plugin 后缀
   if (pluginId) {
     const camelCase = pluginId
       .split("-")
       .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
       .join("");
-    console.log(`[PluginLoader] 推断全局变量名: ${camelCase}`);
-    return camelCase;
+    // 添加 Plugin 后缀（如果还没有）
+    const globalName = camelCase.endsWith("Plugin")
+      ? camelCase
+      : `${camelCase}Plugin`;
+    console.log(`[PluginLoader] 推断全局变量名: ${globalName}`);
+    return globalName;
   }
 
   // 默认回退

@@ -1,6 +1,6 @@
 [package]
 name = "proxycast"
-version = "0.45.1"
+version = "0.45.2"
 description = "AI API Proxy Desktop App"
 authors = ["you"]
 edition = "2021"

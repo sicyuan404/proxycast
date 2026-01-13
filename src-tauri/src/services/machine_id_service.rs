@@ -745,8 +745,10 @@ impl MachineIdService {
         Ok(())
     }
 
-    /// 获取历史记录
+    /// 获取历史记录（倒序，最新的在前）
     pub fn get_history(&self) -> Result<Vec<MachineIdHistory>, String> {
-        self.load_history()
+        let mut history = self.load_history()?;
+        history.reverse();
+        Ok(history)
     }
 }
