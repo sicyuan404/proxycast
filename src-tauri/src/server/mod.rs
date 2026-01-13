@@ -222,6 +222,15 @@ impl ServerState {
         self.requests = self.requests.saturating_add(1);
     }
 
+    /// 解析绑定地址
+    /// 
+    /// 直接返回用户配置的地址，不做任何自动替换。
+    /// 如果地址无效，绑定时会失败并返回错误。
+    fn resolve_bind_host(&self, configured_host: &str) -> String {
+        tracing::info!("[SERVER] 使用配置的监听地址: {}", configured_host);
+        configured_host.to_string()
+    }
+
     pub async fn start(
         &mut self,
         logs: Arc<RwLock<LogStore>>,
@@ -285,52 +294,21 @@ impl ServerState {
         let (tx, rx) = oneshot::channel();
         self.shutdown_tx = Some(tx);
 
-        // 检查配置的 host 是否有效（在当前网卡列表中或是特殊地址）
-        let host = {
-            let configured_host = &self.config.server.host;
-
-            // 特殊地址不需要检查
-            if configured_host == "0.0.0.0"
-                || configured_host == "127.0.0.1"
-                || configured_host == "localhost"
-            {
-                configured_host.clone()
-            } else {
-                // 检查 IP 是否在当前网卡列表中
-                match crate::commands::network_cmd::get_network_info() {
-                    Ok(network_info) => {
-                        if network_info.all_ips.contains(configured_host) {
-                            configured_host.clone()
-                        } else {
-                            // IP 不在当前网卡列表中，使用当前的局域网 IP
-                            // 优先选择 192.168.x.x 或 10.x.x.x 开头的 IP（真正的局域网 IP）
-                            let preferred_ip = network_info
-                                .all_ips
-                                .iter()
-                                .find(|ip| ip.starts_with("192.168.") || ip.starts_with("10."));
-
-                            let new_ip = preferred_ip
-                                .or_else(|| network_info.lan_ip.as_ref())
-                                .or_else(|| network_info.all_ips.first())
-                                .cloned()
-                                .unwrap_or_else(|| "127.0.0.1".to_string());
-
-                            tracing::warn!(
-                                "[SERVER] 配置的 IP {} 不在当前网卡列表中，自动切换到 {}",
-                                configured_host,
-                                new_ip
-                            );
-                            eprintln!(
-                                "[SERVER] 警告：配置的 IP {} 不在当前网卡列表中，自动切换到 {}",
-                                configured_host, new_ip
-                            );
-                            new_ip
-                        }
-                    }
-                    Err(_) => configured_host.clone(),
-                }
-            }
-        };
+        // 智能选择监听地址
+        // - 127.0.0.1, localhost, 0.0.0.0, :: 直接使用
+        // - 局域网 IP：检查是否在当前网卡列表中，如果不在则自动切换到当前局域网 IP
+        let configured_host = self.config.server.host.clone();
+        let host = self.resolve_bind_host(&configured_host);
+        
+        // 如果地址发生了变化，记录日志
+        if host != configured_host {
+            tracing::warn!(
+                "[SERVER] 配置的监听地址 {} 不可用，自动切换到 {}",
+                configured_host,
+                host
+            );
+        }
+        
         let port = self.config.server.port;
         let api_key = self.config.server.api_key.clone();
         let api_key_for_state = api_key.clone(); // 用于保存到 running_api_key
@@ -1070,8 +1048,18 @@ async fn run_server(
         .layer(DefaultBodyLimit::max(body_limit))
         .with_state(state);
 
-    let addr: std::net::SocketAddr = format!("{host}:{port}").parse()?;
-    let listener = tokio::net::TcpListener::bind(addr).await?;
+    let addr: std::net::SocketAddr = format!("{host}:{port}")
+        .parse()
+        .map_err(|e| format!("无效的监听地址 {}:{} - {}", host, port, e))?;
+    
+    let listener = tokio::net::TcpListener::bind(addr)
+        .await
+        .map_err(|e| {
+            format!(
+                "无法绑定到 {}:{}，错误: {}。请检查地址是否有效或端口是否被占用。",
+                host, port, e
+            )
+        })?;
 
     tracing::info!("Server listening on {}", addr);
 

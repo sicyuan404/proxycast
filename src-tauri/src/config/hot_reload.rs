@@ -418,15 +418,6 @@ impl HotReloadManager {
             ));
         }
 
-        // 非本地绑定或远程管理时，禁止使用默认 API Key
-        if (is_non_local || !is_localhost || config.remote_management.allow_remote)
-            && is_default_api_key(&config.server.api_key)
-        {
-            return Err(HotReloadError::ValidationError(
-                "监听所有网络接口或开启远程管理时，禁止使用默认 API Key，请设置强口令".to_string(),
-            ));
-        }
-
         if config.server.tls.enable {
             return Err(HotReloadError::ValidationError(
                 "当前版本暂不支持 TLS，请关闭 TLS 配置".to_string(),

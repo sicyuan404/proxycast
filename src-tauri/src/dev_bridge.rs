@@ -91,7 +91,13 @@ impl DevBridgeServer {
             .with_state(app_state);
 
         let addr = format!("{}:{}", config.host, config.port);
-        let listener = tokio::net::TcpListener::bind(&addr).await?;
+        let listener = match tokio::net::TcpListener::bind(&addr).await {
+            Ok(l) => l,
+            Err(e) => {
+                eprintln!("[DevBridge] 绑定失败: {} (地址: {})", e, addr);
+                return Err(e.into());
+            }
+        };
 
         eprintln!("[DevBridge] 正在监听: http://{}", addr);
 

@@ -6,6 +6,7 @@ use crate::agent::{
     AgentMessage, AgentSession, ImageData, MessageContent, NativeAgentState, NativeChatRequest,
     NativeChatResponse, ProviderType, StreamEvent, ToolLoopEngine,
 };
+use crate::commands::network_cmd::get_local_url;
 use crate::database::dao::agent::AgentDao;
 use crate::database::dao::api_key_provider::ApiKeyProviderDao;
 use crate::database::DbConnection;
@@ -28,9 +29,10 @@ pub async fn native_agent_init(
 ) -> Result<NativeAgentStatus, String> {
     tracing::info!("[NativeAgent] 初始化 Agent");
 
-    let (port, api_key, running, default_provider, agent_config) = {
+    let (host, port, api_key, running, default_provider, agent_config) = {
         let state = app_state.read().await;
         (
+            state.config.server.host.clone(),
             state.config.server.port,
             state.running_api_key.clone(),
             state.running,
@@ -45,7 +47,7 @@ pub async fn native_agent_init(
 
     let api_key = api_key.ok_or_else(|| "ProxyCast API Server 未配置 API Key".to_string())?;
 
-    let base_url = format!("http://127.0.0.1:{}", port);
+    let base_url = get_local_url(&host, port);
     let provider_type = ProviderType::from_str(&default_provider);
 
     tracing::info!(
@@ -111,9 +113,10 @@ pub async fn native_agent_chat(
 
     // 如果 Agent 未初始化，自动初始化
     if !agent_state.is_initialized() {
-        let (port, api_key, running, default_provider) = {
+        let (host, port, api_key, running, default_provider) = {
             let state = app_state.read().await;
             (
+                state.config.server.host.clone(),
                 state.config.server.port,
                 state.running_api_key.clone(),
                 state.running,
@@ -126,7 +129,7 @@ pub async fn native_agent_chat(
         }
 
         let api_key = api_key.ok_or_else(|| "未配置 API Key".to_string())?;
-        let base_url = format!("http://127.0.0.1:{}", port);
+        let base_url = get_local_url(&host, port);
         let provider_type = ProviderType::from_str(&default_provider);
         agent_state.init(base_url, api_key, provider_type, Some(default_provider))?;
     }
@@ -176,9 +179,10 @@ pub async fn native_agent_chat_stream(
     );
 
     // 获取配置信息
-    let (port, api_key, running, default_provider) = {
+    let (host, port, api_key, running, default_provider) = {
         let state = app_state.read().await;
         (
+            state.config.server.host.clone(),
             state.config.server.port,
             state.running_api_key.clone(),
             state.running,
@@ -241,7 +245,7 @@ pub async fn native_agent_chat_stream(
     };
 
     if need_reinit {
-        let base_url = format!("http://127.0.0.1:{}", port);
+        let base_url = get_local_url(&host, port);
         agent_state.init(base_url, api_key, provider_type, Some(provider_str.clone()))?;
     }
 

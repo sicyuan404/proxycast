@@ -202,9 +202,14 @@ export function ApiServerPage() {
   const fetchConfig = async () => {
     try {
       const c = await getConfig();
+      console.log(
+        "[DEBUG] fetchConfig - loaded config.server.host:",
+        c.server.host,
+      );
       setConfig(c);
       setEditPort(c.server.port.toString());
       setEditHost(c.server.host);
+      console.log("[DEBUG] fetchConfig - setEditHost to:", c.server.host);
       setEditApiKey(c.server.api_key);
     } catch (e) {
       console.error(e);
@@ -383,10 +388,42 @@ export function ApiServerPage() {
     setLoading(false);
   };
 
+  // 自动保存监听地址
+  const handleHostChange = async (newHost: string) => {
+    setEditHost(newHost);
+
+    // 如果配置已加载，自动保存
+    if (config) {
+      try {
+        const newConfig = {
+          ...config,
+          server: {
+            ...config.server,
+            host: newHost,
+          },
+        };
+        await saveConfig(newConfig);
+        setConfig(newConfig);
+        console.log("[DEBUG] handleHostChange - 自动保存地址:", newHost);
+      } catch (e: unknown) {
+        const errMsg = e instanceof Error ? e.message : String(e);
+        console.error("[DEBUG] handleHostChange - 保存失败:", errMsg);
+        setMessage({ type: "error", text: `保存地址失败: ${errMsg}` });
+      }
+    }
+  };
+
   const handleSaveServerConfig = async () => {
     if (!config) return;
     setLoading(true);
     try {
+      // 调试日志：确认保存时的值
+      console.log("[DEBUG] handleSaveServerConfig - editHost:", editHost);
+      console.log(
+        "[DEBUG] handleSaveServerConfig - config.server.host:",
+        config.server.host,
+      );
+
       const newConfig = {
         ...config,
         server: {
@@ -396,11 +433,21 @@ export function ApiServerPage() {
           api_key: editApiKey,
         },
       };
+
+      console.log(
+        "[DEBUG] handleSaveServerConfig - newConfig.server.host:",
+        newConfig.server.host,
+      );
+
       await saveConfig(newConfig);
+
+      console.log("[DEBUG] handleSaveServerConfig - saveConfig completed");
+
       await fetchConfig();
       setMessage({ type: "success", text: "服务器配置已保存" });
     } catch (e: unknown) {
       const errMsg = e instanceof Error ? e.message : String(e);
+      console.error("[DEBUG] handleSaveServerConfig - error:", errMsg);
       setMessage({ type: "error", text: `保存失败: ${errMsg}` });
     }
     setLoading(false);
@@ -693,19 +740,62 @@ export function ApiServerPage() {
   // - 0.0.0.0: 使用 127.0.0.1（本机访问所有接口）
   // - 局域网 IP: 使用该 IP（允许局域网测试）
   const getTestUrl = (host: string, port: number) => {
-    if (host === "0.0.0.0") {
+    if (host === "0.0.0.0" || !host) {
       return `http://127.0.0.1:${port}`;
     }
     return `http://${host}:${port}`;
   };
 
-  // 使用 editHost 而不是 status.host，这样可以实时反映用户的选择
-  const currentHost = status?.running ? status.host : editHost;
+  // 获取当前有效的监听地址
+  // 优先使用服务器运行时的实际地址，否则使用编辑中的地址
+  const currentHost = status?.running ? status.host : editHost || "127.0.0.1";
   const currentPort = status?.running
     ? status.port
     : parseInt(editPort) || 8999;
   const serverUrl = getTestUrl(currentHost, currentPort);
   const apiKey = config?.server.api_key ?? "";
+
+  // 检测是否发生了地址自动切换
+  // 只有当配置的地址是一个不可用的局域网 IP（不在当前网卡列表中）时才显示提示
+  // 127.0.0.1, 0.0.0.0 等特殊地址不会触发自动切换
+  const hostMismatch = useMemo(() => {
+    if (!status?.running || !config?.server.host) return false;
+
+    const configuredHost = config.server.host;
+    const actualHost = status.host;
+
+    // 如果地址相同，没有切换
+    if (configuredHost === actualHost) return false;
+
+    // 如果配置的是特殊地址，不显示提示（这些地址不会被自动切换）
+    if (
+      ["127.0.0.1", "localhost", "0.0.0.0", "::", "::1"].includes(
+        configuredHost,
+      )
+    ) {
+      return false;
+    }
+
+    // 配置的是局域网 IP，但实际运行地址不同，说明发生了自动切换
+    return true;
+  }, [status, config]);
+
+  // 计算 Select 组件的可用选项
+  // 包括固定选项 + 网络接口 IP + 当前配置的地址（如果不在列表中）+ 实际运行地址
+  const hostOptions = useMemo(() => {
+    const options = new Set<string>(["127.0.0.1", "0.0.0.0"]);
+    // 添加网络接口 IP
+    networkInfo?.all_ips.forEach((ip) => options.add(ip));
+    // 如果当前配置的地址不在列表中，也添加进去
+    if (editHost && !options.has(editHost)) {
+      options.add(editHost);
+    }
+    // 如果服务器运行中且实际地址不在列表中，也添加进去
+    if (status?.running && status.host && !options.has(status.host)) {
+      options.add(status.host);
+    }
+    return Array.from(options);
+  }, [networkInfo, editHost, status]);
 
   // 动态生成测试端点
   const testEndpoints = useMemo(() => {
@@ -960,8 +1050,10 @@ export function ApiServerPage() {
                 <div className="flex items-center gap-2">
                   <span className="text-muted-foreground">监听地址:</span>
                   <Select.Root
-                    value={editHost}
-                    onValueChange={setEditHost}
+                    value={
+                      status?.running ? status.host : editHost || "127.0.0.1"
+                    }
+                    onValueChange={handleHostChange}
                     disabled={status?.running}
                   >
                     <Select.Trigger className="inline-flex min-w-[200px] items-center justify-between gap-2 rounded-md border border-input bg-background px-3 py-1.5 text-sm shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50">
@@ -979,59 +1071,36 @@ export function ApiServerPage() {
                         className="z-50 min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-md border border-border bg-white dark:bg-gray-900 text-foreground shadow-lg"
                       >
                         <Select.Viewport className="p-1 bg-white dark:bg-gray-900">
-                          <Select.Item
-                            value="127.0.0.1"
-                            className="relative flex cursor-pointer select-none items-center rounded-sm px-8 py-2.5 text-sm outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50"
-                          >
-                            <Select.ItemIndicator className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
-                              <Check className="h-4 w-4" />
-                            </Select.ItemIndicator>
-                            <Select.ItemText>
-                              <span className="flex items-center gap-2">
-                                <span className="font-mono">127.0.0.1</span>
-                                <span className="text-xs text-muted-foreground">
-                                  (仅本机)
-                                </span>
-                              </span>
-                            </Select.ItemText>
-                          </Select.Item>
-
-                          <Select.Item
-                            value="0.0.0.0"
-                            className="relative flex cursor-pointer select-none items-center rounded-sm px-8 py-2.5 text-sm outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50"
-                          >
-                            <Select.ItemIndicator className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
-                              <Check className="h-4 w-4" />
-                            </Select.ItemIndicator>
-                            <Select.ItemText>
-                              <span className="flex items-center gap-2">
-                                <span className="font-mono">0.0.0.0</span>
-                                <span className="text-xs text-muted-foreground">
-                                  (所有接口)
-                                </span>
-                              </span>
-                            </Select.ItemText>
-                          </Select.Item>
-
-                          {networkInfo?.all_ips.map((ip) => (
-                            <Select.Item
-                              key={ip}
-                              value={ip}
-                              className="relative flex cursor-pointer select-none items-center rounded-sm px-8 py-2.5 text-sm outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50"
-                            >
-                              <Select.ItemIndicator className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
-                                <Check className="h-4 w-4" />
-                              </Select.ItemIndicator>
-                              <Select.ItemText>
-                                <span className="flex items-center gap-2">
-                                  <span className="font-mono">{ip}</span>
-                                  <span className="text-xs text-muted-foreground">
-                                    (局域网)
+                          {hostOptions.map((ip) => {
+                            // 确定 IP 类型标签
+                            let label = "(局域网)";
+                            if (ip === "127.0.0.1") {
+                              label = "(仅本机)";
+                            } else if (ip === "0.0.0.0") {
+                              label = "(所有接口)";
+                            } else if (!networkInfo?.all_ips.includes(ip)) {
+                              label = "(已配置)";
+                            }
+                            return (
+                              <Select.Item
+                                key={ip}
+                                value={ip}
+                                className="relative flex cursor-pointer select-none items-center rounded-sm px-8 py-2.5 text-sm outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50"
+                              >
+                                <Select.ItemIndicator className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
+                                  <Check className="h-4 w-4" />
+                                </Select.ItemIndicator>
+                                <Select.ItemText>
+                                  <span className="flex items-center gap-2">
+                                    <span className="font-mono">{ip}</span>
+                                    <span className="text-xs text-muted-foreground">
+                                      {label}
+                                    </span>
                                   </span>
-                                </span>
-                              </Select.ItemText>
-                            </Select.Item>
-                          ))}
+                                </Select.ItemText>
+                              </Select.Item>
+                            );
+                          })}
                         </Select.Viewport>
                       </Select.Content>
                     </Select.Portal>
@@ -1073,14 +1142,15 @@ export function ApiServerPage() {
                 <span>修改配置需要先停止服务</span>
               </div>
             )}
-            {(editHost === "0.0.0.0" ||
-              (networkInfo?.all_ips.includes(editHost) ?? false)) &&
-              !status?.running && (
-                <div className="mt-3 flex items-center gap-2 rounded-md bg-amber-50 dark:bg-amber-950/20 px-3 py-2 text-xs text-amber-700 dark:text-amber-500">
-                  <span>⚠️</span>
-                  <span>局域网访问需要使用非默认 API Key 以确保安全</span>
-                </div>
-              )}
+            {hostMismatch && (
+              <div className="mt-3 flex items-center gap-2 rounded-md bg-blue-50 dark:bg-blue-950/20 px-3 py-2 text-xs text-blue-700 dark:text-blue-400">
+                <span>ℹ️</span>
+                <span>
+                  配置的地址 {config?.server.host} 不可用，已自动切换到{" "}
+                  {status?.host}。 停止服务后可更新配置。
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Default Provider - 动态显示有凭证的 Provider */}

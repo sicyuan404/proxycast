@@ -25,28 +25,35 @@ pub async fn save_config(
 ) -> Result<(), String> {
     let host = config.server.host.to_lowercase();
 
+    tracing::info!("[CONFIG] 保存配置请求: host={}, port={}", host, config.server.port);
+
     // 验证绑定地址
     if !is_valid_bind_host(&host) {
+        tracing::warn!("[CONFIG] 无效的监听地址: {}", host);
         return Err(
-            "无效的监听地址。允许的地址：127.0.0.1、localhost、::1、0.0.0.0、::".to_string(),
-        );
-    }
-
-    // 如果监听所有接口，要求使用强 API Key
-    if is_non_local_bind(&host) && config.server.api_key == DEFAULT_API_KEY {
-        return Err(
-            "安全限制：监听所有网络接口 (0.0.0.0 或 ::) 时，必须设置非默认的 API Key".to_string(),
+            "无效的监听地址。允许的地址：127.0.0.1、localhost、::1、0.0.0.0、:: 或局域网 IP".to_string(),
         );
     }
 
     // 禁止开启远程管理
     if config.remote_management.allow_remote {
+        tracing::warn!("[CONFIG] 安全限制：不允许开启远程管理功能");
         return Err("安全限制：不允许开启远程管理功能".to_string());
     }
 
     let mut s = state.write().await;
     s.config = config.clone();
-    config::save_config(&config).map_err(|e| e.to_string())
+    
+    match config::save_config(&config) {
+        Ok(()) => {
+            tracing::info!("[CONFIG] 配置保存成功: host={}", config.server.host);
+            Ok(())
+        }
+        Err(e) => {
+            tracing::error!("[CONFIG] 配置保存失败: {}", e);
+            Err(e.to_string())
+        }
+    }
 }
 
 /// 获取默认 Provider

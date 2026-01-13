@@ -1,51 +1,17 @@
 //! 路由相关 Tauri 命令
 
+use crate::commands::network_cmd::get_accessible_url;
 use crate::commands::provider_pool_cmd::ProviderPoolServiceState;
 use crate::config;
 use crate::database::DbConnection;
 use crate::models::route_model::{RouteInfo, RouteListResponse};
 
-/// 获取有效的服务器地址
-/// 如果配置的 IP 不在当前网卡列表中，自动替换为当前的局域网 IP
+/// 获取可访问的服务器地址
+///
+/// 使用 `get_accessible_url` 函数生成可访问的 URL。
+/// 对于 `0.0.0.0`，会转换为局域网 IP 或 `127.0.0.1`。
 fn get_valid_base_url(config: &config::Config) -> String {
-    let configured_host = &config.server.host;
-    let port = config.server.port;
-
-    // 特殊地址不需要检查
-    if configured_host == "127.0.0.1" || configured_host == "localhost" {
-        return format!("http://{}:{}", configured_host, port);
-    }
-
-    // 0.0.0.0 或其他 IP 需要检查
-    if let Ok(network_info) = crate::commands::network_cmd::get_network_info() {
-        let host = if configured_host == "0.0.0.0" {
-            // 0.0.0.0 替换为局域网 IP
-            network_info
-                .all_ips
-                .iter()
-                .find(|ip| ip.starts_with("192.168.") || ip.starts_with("10."))
-                .or_else(|| network_info.lan_ip.as_ref())
-                .or_else(|| network_info.all_ips.first())
-                .cloned()
-                .unwrap_or_else(|| "localhost".to_string())
-        } else if network_info.all_ips.contains(configured_host) {
-            // IP 在当前网卡列表中，使用配置的 IP
-            configured_host.clone()
-        } else {
-            // IP 不在当前网卡列表中，替换为局域网 IP
-            network_info
-                .all_ips
-                .iter()
-                .find(|ip| ip.starts_with("192.168.") || ip.starts_with("10."))
-                .or_else(|| network_info.lan_ip.as_ref())
-                .or_else(|| network_info.all_ips.first())
-                .cloned()
-                .unwrap_or_else(|| "localhost".to_string())
-        };
-        format!("http://{}:{}", host, port)
-    } else {
-        format!("http://{}:{}", configured_host, port)
-    }
+    get_accessible_url(&config.server.host, config.server.port)
 }
 
 /// 获取所有可用的路由端点

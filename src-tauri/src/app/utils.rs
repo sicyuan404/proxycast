@@ -98,17 +98,28 @@ mod tests {
         // 监听所有接口
         assert!(is_valid_bind_host("0.0.0.0"));
         assert!(is_valid_bind_host("::"));
-        // 其他地址不允许
-        assert!(!is_valid_bind_host("192.168.1.1"));
-        assert!(!is_valid_bind_host("10.0.0.1"));
+        // 私有网络地址（局域网）- 应该允许
+        assert!(is_valid_bind_host("192.168.1.1"));
+        assert!(is_valid_bind_host("10.0.0.1"));
+        assert!(is_valid_bind_host("172.16.0.1"));
+        assert!(is_valid_bind_host("172.31.255.255"));
+        // 公网地址不允许
+        assert!(!is_valid_bind_host("8.8.8.8"));
+        assert!(!is_valid_bind_host("1.1.1.1"));
     }
 
     #[test]
     fn test_is_non_local_bind() {
+        // 监听所有接口
         assert!(is_non_local_bind("0.0.0.0"));
         assert!(is_non_local_bind("::"));
+        // 回环地址不是非本地绑定
         assert!(!is_non_local_bind("127.0.0.1"));
         assert!(!is_non_local_bind("localhost"));
+        // 私有网络地址是非本地绑定（需要强 API Key）
+        assert!(is_non_local_bind("192.168.1.1"));
+        assert!(is_non_local_bind("10.0.0.1"));
+        assert!(is_non_local_bind("172.16.0.1"));
     }
 
     #[test]

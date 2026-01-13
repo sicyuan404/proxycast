@@ -87,19 +87,12 @@ pub fn load_and_validate_config() -> Result<Config, ConfigError> {
         return Err(ConfigError::InvalidHost);
     }
 
-    let is_non_local = is_non_local_bind(&config.server.host);
-
-    // 如果是本地绑定且使用默认 API key，自动生成新密钥
-    if !is_non_local && config.server.api_key == config::DEFAULT_API_KEY {
+    // 如果使用默认 API key，自动生成新密钥
+    if config.server.api_key == config::DEFAULT_API_KEY {
         let new_key = generate_api_key();
         config.server.api_key = new_key;
         config::save_config(&config).map_err(|e| ConfigError::SaveFailed(e.to_string()))?;
         tracing::info!("检测到默认 API key，已自动生成并保存新密钥");
-    }
-
-    // 如果是非本地绑定，必须使用非默认 API key
-    if is_non_local && config.server.api_key == config::DEFAULT_API_KEY {
-        return Err(ConfigError::DefaultApiKeyWithNonLocalBind);
     }
 
     // 检查 TLS 配置

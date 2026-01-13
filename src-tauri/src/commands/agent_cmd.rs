@@ -9,6 +9,7 @@ use crate::agent::tools::{
 use crate::agent::{
     AgentMessage, AgentSession, ImageData, NativeAgentState, NativeChatRequest, ProviderType,
 };
+use crate::commands::network_cmd::get_local_url;
 use crate::database::dao::agent::AgentDao;
 use crate::database::DbConnection;
 use crate::AppState;
@@ -42,9 +43,10 @@ pub async fn agent_start_process(
 ) -> Result<AgentProcessStatus, String> {
     tracing::info!("[Agent] 初始化原生 Agent");
 
-    let (port, api_key, running, default_provider) = {
+    let (host, port, api_key, running, default_provider) = {
         let state = app_state.read().await;
         (
+            state.config.server.host.clone(),
             state.config.server.port,
             state.running_api_key.clone(),
             state.running,
@@ -57,7 +59,7 @@ pub async fn agent_start_process(
     }
 
     let api_key = api_key.ok_or_else(|| "ProxyCast API Server 未配置 API Key".to_string())?;
-    let base_url = format!("http://127.0.0.1:{}", port);
+    let base_url = get_local_url(&host, port);
     let provider_type = ProviderType::from_str(&default_provider);
 
     agent_state.init(
@@ -92,9 +94,10 @@ pub async fn agent_get_process_status(
 
     if initialized {
         let state = app_state.read().await;
+        let base_url = get_local_url(&state.config.server.host, state.config.server.port);
         Ok(AgentProcessStatus {
             running: true,
-            base_url: Some(format!("http://127.0.0.1:{}", state.config.server.port)),
+            base_url: Some(base_url),
             port: Some(state.config.server.port),
         })
     } else {
@@ -134,9 +137,10 @@ pub async fn agent_create_session(
 
     // 如果未初始化，自动初始化
     if !agent_state.is_initialized() {
-        let (port, api_key, running, default_provider) = {
+        let (host, port, api_key, running, default_provider) = {
             let state = app_state.read().await;
             (
+                state.config.server.host.clone(),
                 state.config.server.port,
                 state.running_api_key.clone(),
                 state.running,
@@ -149,7 +153,7 @@ pub async fn agent_create_session(
         }
 
         let api_key = api_key.ok_or_else(|| "未配置 API Key".to_string())?;
-        let base_url = format!("http://127.0.0.1:{}", port);
+        let base_url = get_local_url(&host, port);
         let provider_type = ProviderType::from_str(&default_provider);
         agent_state.init(base_url, api_key, provider_type, Some(default_provider))?;
     }
@@ -258,9 +262,10 @@ pub async fn agent_send_message(
 
     // 如果未初始化，自动初始化
     if !agent_state.is_initialized() {
-        let (port, api_key, running, default_provider) = {
+        let (host, port, api_key, running, default_provider) = {
             let state = app_state.read().await;
             (
+                state.config.server.host.clone(),
                 state.config.server.port,
                 state.running_api_key.clone(),
                 state.running,
@@ -273,7 +278,7 @@ pub async fn agent_send_message(
         }
 
         let api_key = api_key.ok_or_else(|| "未配置 API Key".to_string())?;
-        let base_url = format!("http://127.0.0.1:{}", port);
+        let base_url = get_local_url(&host, port);
         let provider_type = ProviderType::from_str(&default_provider);
         agent_state.init(base_url, api_key, provider_type, Some(default_provider))?;
     }
