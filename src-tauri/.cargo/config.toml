@@ -1,0 +1,10 @@
+[build]
+[target.x86_64-pc-windows-msvc]
+rustflags = []
+
+[env]
+AWS_LC_SYS_C_STD = "17"
+X86_64_PC_WINDOWS_MSVC_OPENSSL_NO_VENDOR = "0"
+OPENSSL_NO_VENDOR = "0"
+OPENSSL_STATIC = "1"
+OPENSSL_DIR = ""

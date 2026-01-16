@@ -97,31 +97,6 @@
 
 ---
 
-## 📸 界面截图
-
-### 仪表盘 - 系统状态与监控
-![Dashboard](docs/images/943663ed-b17c-4b32-a74c-c0243ffb3dea.png)
-
-### 凭证池 - 多凭证管理与配额查询
-![Provider Pool](docs/images/aee62eb5-3aeb-4454-b14d-24b1d5f9a0fe.png)
-
-### 路由管理 - 智能路由规则和容错策略
-![Router](docs/images/067c7d64-e116-4a30-b533-748873166f37.png)
-
-### 配置管理 - 客户端配置切换
-![Config](docs/images/25eb018a-5be2-4f82-ba22-e68f39160cac.png)
-
-### 扩展 - MCP/Prompts/Skills 管理
-![Extensions](docs/images/ffc70018-aa5f-4738-883d-045614488608.png)
-
-### API Server - 服务控制与 API 测试
-![API Server](docs/images/151b4355-821c-4bda-a731-c4367b6b8716.png)
-
-### 设置 - 应用参数和偏好
-![Settings](docs/images/c7d8236b-ea6c-4496-ada5-288cd0a01738.png)
-
----
-
 ## 🚀 快速开始
 
 ### 下载安装

@@ -22,25 +22,26 @@ describe("Property 1: 缩放范围不变量", () => {
    */
   test.prop([fc.integer({ min: -1000, max: 1000 })])(
     "clampZoom 应该将任意整数限制在 [10, 200] 范围内",
-    (inputZoom) => {
-      const result = clampZoom(inputZoom);
+    (inputZoom: unknown) => {
+      const typedInputZoom = inputZoom as number;
+      const result = clampZoom(typedInputZoom);
 
       // 结果应该在有效范围内
       expect(result).toBeGreaterThanOrEqual(ZOOM_MIN);
       expect(result).toBeLessThanOrEqual(ZOOM_MAX);
 
       // 如果输入在范围内，结果应该等于输入
-      if (inputZoom >= ZOOM_MIN && inputZoom <= ZOOM_MAX) {
-        expect(result).toBe(inputZoom);
+      if (typedInputZoom >= ZOOM_MIN && typedInputZoom <= ZOOM_MAX) {
+        expect(result).toBe(typedInputZoom);
       }
 
       // 如果输入小于最小值，结果应该等于最小值
-      if (inputZoom < ZOOM_MIN) {
+      if (typedInputZoom < ZOOM_MIN) {
         expect(result).toBe(ZOOM_MIN);
       }
 
       // 如果输入大于最大值，结果应该等于最大值
-      if (inputZoom > ZOOM_MAX) {
+      if (typedInputZoom > ZOOM_MAX) {
         expect(result).toBe(ZOOM_MAX);
       }
     },
@@ -51,20 +52,21 @@ describe("Property 1: 缩放范围不变量", () => {
    */
   test.prop([fc.integer({ min: ZOOM_MIN, max: ZOOM_MAX })])(
     "放大操作后缩放值应该增加但不超过 200%",
-    (currentZoom) => {
-      const result = zoomUtils.calculateZoomIn(currentZoom);
+    (currentZoom: unknown) => {
+      const typedCurrentZoom = currentZoom as number;
+      const result = zoomUtils.calculateZoomIn(typedCurrentZoom);
 
       // 结果应该在有效范围内
       expect(result).toBeGreaterThanOrEqual(ZOOM_MIN);
       expect(result).toBeLessThanOrEqual(ZOOM_MAX);
 
       // 如果当前值小于最大值，结果应该增加
-      if (currentZoom < ZOOM_MAX) {
-        expect(result).toBeGreaterThan(currentZoom);
+      if (typedCurrentZoom < ZOOM_MAX) {
+        expect(result).toBeGreaterThan(typedCurrentZoom);
       }
 
       // 如果当前值已经是最大值，结果应该保持不变
-      if (currentZoom >= ZOOM_MAX) {
+      if (typedCurrentZoom >= ZOOM_MAX) {
         expect(result).toBe(ZOOM_MAX);
       }
     },
@@ -75,20 +77,21 @@ describe("Property 1: 缩放范围不变量", () => {
    */
   test.prop([fc.integer({ min: ZOOM_MIN, max: ZOOM_MAX })])(
     "缩小操作后缩放值应该减少但不低于 10%",
-    (currentZoom) => {
-      const result = zoomUtils.calculateZoomOut(currentZoom);
+    (currentZoom: unknown) => {
+      const typedCurrentZoom = currentZoom as number;
+      const result = zoomUtils.calculateZoomOut(typedCurrentZoom);
 
       // 结果应该在有效范围内
       expect(result).toBeGreaterThanOrEqual(ZOOM_MIN);
       expect(result).toBeLessThanOrEqual(ZOOM_MAX);
 
       // 如果当前值大于最小值，结果应该减少
-      if (currentZoom > ZOOM_MIN) {
-        expect(result).toBeLessThan(currentZoom);
+      if (typedCurrentZoom > ZOOM_MIN) {
+        expect(result).toBeLessThan(typedCurrentZoom);
       }
 
       // 如果当前值已经是最小值，结果应该保持不变
-      if (currentZoom <= ZOOM_MIN) {
+      if (typedCurrentZoom <= ZOOM_MIN) {
         expect(result).toBe(ZOOM_MIN);
       }
     },
@@ -99,8 +102,8 @@ describe("Property 1: 缩放范围不变量", () => {
    */
   test.prop([fc.integer({ min: ZOOM_MIN, max: ZOOM_MAX })])(
     "连续放大最终会达到最大值 200%",
-    (startZoom) => {
-      let currentZoom = startZoom;
+    (startZoom: unknown) => {
+      let currentZoom = startZoom as number;
 
       // 执行足够多次放大操作
       const maxIterations = Math.ceil((ZOOM_MAX - ZOOM_MIN) / ZOOM_STEP) + 1;
@@ -118,8 +121,8 @@ describe("Property 1: 缩放范围不变量", () => {
    */
   test.prop([fc.integer({ min: ZOOM_MIN, max: ZOOM_MAX })])(
     "连续缩小最终会达到最小值 10%",
-    (startZoom) => {
-      let currentZoom = startZoom;
+    (startZoom: unknown) => {
+      let currentZoom = startZoom as number;
 
       // 执行足够多次缩小操作
       const maxIterations = Math.ceil((ZOOM_MAX - ZOOM_MIN) / ZOOM_STEP) + 1;
@@ -137,9 +140,10 @@ describe("Property 1: 缩放范围不变量", () => {
    */
   test.prop([fc.integer({ min: -1000, max: 1000 })])(
     "isValidZoom 应该正确判断缩放值是否在有效范围内",
-    (zoom) => {
-      const isValid = zoomUtils.isValidZoom(zoom);
-      const expectedValid = zoom >= ZOOM_MIN && zoom <= ZOOM_MAX;
+    (zoom: unknown) => {
+      const typedZoom = zoom as number;
+      const isValid = zoomUtils.isValidZoom(typedZoom);
+      const expectedValid = typedZoom >= ZOOM_MIN && typedZoom <= ZOOM_MAX;
 
       expect(isValid).toBe(expectedValid);
     },
@@ -150,8 +154,9 @@ describe("Property 1: 缩放范围不变量", () => {
    */
   test.prop([fc.integer({ min: -1000, max: 1000 })])(
     "clampZoom 应该是幂等的",
-    (inputZoom) => {
-      const firstClamp = clampZoom(inputZoom);
+    (inputZoom: unknown) => {
+      const typedInputZoom = inputZoom as number;
+      const firstClamp = clampZoom(typedInputZoom);
       const secondClamp = clampZoom(firstClamp);
 
       expect(secondClamp).toBe(firstClamp);

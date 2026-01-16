@@ -48,12 +48,14 @@ describe("Property 2: 元素变换正确性", () => {
         noNaN: true,
       }),
     }),
-  ])("移动操作：最终位置 = 初始位置 + 拖拽距离", (initial, delta) => {
-    const result = transformUtils.calculateMove(initial, delta);
+  ])("移动操作：最终位置 = 初始位置 + 拖拽距离", (initial: unknown, delta: unknown) => {
+    const typedInitial = initial as { left: number; top: number };
+    const typedDelta = delta as { x: number; y: number };
+    const result = transformUtils.calculateMove(typedInitial, typedDelta);
 
     // 验证移动公式
-    expect(result.left).toBeCloseTo(initial.left + delta.x, 5);
-    expect(result.top).toBeCloseTo(initial.top + delta.y, 5);
+    expect(result.left).toBeCloseTo(typedInitial.left + typedDelta.x, 5);
+    expect(result.top).toBeCloseTo(typedInitial.top + typedDelta.y, 5);
   });
 
   /**
@@ -74,12 +76,14 @@ describe("Property 2: 元素变换正确性", () => {
       }),
     }),
     fc.float({ min: Math.fround(0.01), max: Math.fround(100), noNaN: true }),
-  ])("缩放操作：最终尺寸 = 初始尺寸 × 缩放因子", (initial, factor) => {
-    const result = transformUtils.calculateScale(initial, factor);
+  ])("缩放操作：最终尺寸 = 初始尺寸 × 缩放因子", (initial: unknown, factor: unknown) => {
+    const typedInitial = initial as { scaleX: number; scaleY: number };
+    const typedFactor = factor as number;
+    const result = transformUtils.calculateScale(typedInitial, typedFactor);
 
     // 验证缩放公式
-    expect(result.scaleX).toBeCloseTo(initial.scaleX * factor, 5);
-    expect(result.scaleY).toBeCloseTo(initial.scaleY * factor, 5);
+    expect(result.scaleX).toBeCloseTo(typedInitial.scaleX * typedFactor, 5);
+    expect(result.scaleY).toBeCloseTo(typedInitial.scaleY * typedFactor, 5);
 
     // 缩放结果应该为正数
     expect(result.scaleX).toBeGreaterThan(0);
@@ -137,15 +141,17 @@ describe("Property 2: 元素变换正确性", () => {
         noNaN: true,
       }),
     }),
-  ])("移动操作应该是可逆的", (initial, delta) => {
-    const moved = transformUtils.calculateMove(initial, delta);
+  ])("移动操作应该是可逆的", (initial: unknown, delta: unknown) => {
+    const typedInitial = initial as { left: number; top: number };
+    const typedDelta = delta as { x: number; y: number };
+    const moved = transformUtils.calculateMove(typedInitial, typedDelta);
     const reversed = transformUtils.calculateMove(moved, {
-      x: -delta.x,
-      y: -delta.y,
+      x: -typedDelta.x,
+      y: -typedDelta.y,
     });
 
-    expect(reversed.left).toBeCloseTo(initial.left, 5);
-    expect(reversed.top).toBeCloseTo(initial.top, 5);
+    expect(reversed.left).toBeCloseTo(typedInitial.left, 5);
+    expect(reversed.top).toBeCloseTo(typedInitial.top, 5);
   });
 
   /**
@@ -166,12 +172,14 @@ describe("Property 2: 元素变换正确性", () => {
       }),
     }),
     fc.float({ min: Math.fround(0.1), max: Math.fround(10), noNaN: true }),
-  ])("缩放操作应该是可逆的", (initial, factor) => {
-    const scaled = transformUtils.calculateScale(initial, factor);
-    const reversed = transformUtils.calculateScale(scaled, 1 / factor);
+  ])("缩放操作应该是可逆的", (initial: unknown, factor: unknown) => {
+    const typedInitial = initial as { scaleX: number; scaleY: number };
+    const typedFactor = factor as number;
+    const scaled = transformUtils.calculateScale(typedInitial, typedFactor);
+    const reversed = transformUtils.calculateScale(scaled, 1 / typedFactor);
 
-    expect(reversed.scaleX).toBeCloseTo(initial.scaleX, 4);
-    expect(reversed.scaleY).toBeCloseTo(initial.scaleY, 4);
+    expect(reversed.scaleX).toBeCloseTo(typedInitial.scaleX, 4);
+    expect(reversed.scaleY).toBeCloseTo(typedInitial.scaleY, 4);
   });
 
   /**
@@ -209,12 +217,13 @@ describe("Property 2: 元素变换正确性", () => {
         noNaN: true,
       }),
     }),
-  ])("移动 (0, 0) 应该保持位置不变", (initial) => {
-    const result = transformUtils.calculateMove(initial, { x: 0, y: 0 });
+  ])("移动 (0, 0) 应该保持位置不变", (initial: unknown) => {
+    const typedInitial = initial as { left: number; top: number };
+    const result = transformUtils.calculateMove(typedInitial, { x: 0, y: 0 });
 
     // 使用 toBeCloseTo 避免 -0 和 +0 的 Object.is 比较问题
-    expect(result.left).toBeCloseTo(initial.left, 10);
-    expect(result.top).toBeCloseTo(initial.top, 10);
+    expect(result.left).toBeCloseTo(typedInitial.left, 10);
+    expect(result.top).toBeCloseTo(typedInitial.top, 10);
   });
 
   /**
@@ -234,11 +243,12 @@ describe("Property 2: 元素变换正确性", () => {
         noNaN: true,
       }),
     }),
-  ])("缩放因子为 1 应该保持尺寸不变", (initial) => {
-    const result = transformUtils.calculateScale(initial, 1);
+  ])("缩放因子为 1 应该保持尺寸不变", (initial: unknown) => {
+    const typedInitial = initial as { scaleX: number; scaleY: number };
+    const result = transformUtils.calculateScale(typedInitial, 1);
 
-    expect(result.scaleX).toBe(initial.scaleX);
-    expect(result.scaleY).toBe(initial.scaleY);
+    expect(result.scaleX).toBe(typedInitial.scaleX);
+    expect(result.scaleY).toBe(typedInitial.scaleY);
   });
 
   /**
@@ -356,26 +366,28 @@ describe("Property 4: 多选操作正确性", () => {
    */
   test.prop([fc.array(fc.uuid(), { minLength: 0, maxLength: 10 }), fc.uuid()])(
     "Shift+点击未选中元素应该将其添加到选择集合",
-    (currentSelection, newId) => {
+    (currentSelection: unknown, newId: unknown) => {
+      const typedCurrentSelection = currentSelection as string[];
+      const typedNewId = newId as string;
       // 确保 newId 不在当前选择中
-      fc.pre(!currentSelection.includes(newId));
+      fc.pre(!typedCurrentSelection.includes(typedNewId));
 
       const result = selectionUtils.calculateToggleSelection(
-        currentSelection,
-        newId,
+        typedCurrentSelection,
+        typedNewId,
       );
 
       // 新元素应该在结果中
-      expect(selectionUtils.selectionContains(result, newId)).toBe(true);
+      expect(selectionUtils.selectionContains(result, typedNewId)).toBe(true);
 
       // 原有选择应该保留
-      currentSelection.forEach((id) => {
+      typedCurrentSelection.forEach((id) => {
         expect(selectionUtils.selectionContains(result, id)).toBe(true);
       });
 
       // 结果大小应该增加 1
       expect(selectionUtils.selectionSize(result)).toBe(
-        selectionUtils.selectionSize(currentSelection) + 1,
+        selectionUtils.selectionSize(typedCurrentSelection) + 1,
       );
     },
   );
@@ -385,12 +397,13 @@ describe("Property 4: 多选操作正确性", () => {
    */
   test.prop([fc.array(fc.uuid(), { minLength: 1, maxLength: 10 })])(
     "Shift+点击已选中元素应该将其从选择集合移除",
-    (currentSelection) => {
+    (currentSelection: unknown) => {
+      const typedCurrentSelection = currentSelection as string[];
       // 选择一个已存在的元素
-      const existingId = currentSelection[0];
+      const existingId = typedCurrentSelection[0];
 
       const result = selectionUtils.calculateToggleSelection(
-        currentSelection,
+        typedCurrentSelection,
         existingId,
       );
 
@@ -398,13 +411,13 @@ describe("Property 4: 多选操作正确性", () => {
       expect(selectionUtils.selectionExcludes(result, existingId)).toBe(true);
 
       // 其他元素应该保留
-      currentSelection.slice(1).forEach((id) => {
+      typedCurrentSelection.slice(1).forEach((id) => {
         expect(selectionUtils.selectionContains(result, id)).toBe(true);
       });
 
       // 结果大小应该减少 1
       expect(selectionUtils.selectionSize(result)).toBe(
-        selectionUtils.selectionSize(currentSelection) - 1,
+        selectionUtils.selectionSize(typedCurrentSelection) - 1,
       );
     },
   );
@@ -414,18 +427,20 @@ describe("Property 4: 多选操作正确性", () => {
    */
   test.prop([fc.array(fc.uuid(), { minLength: 0, maxLength: 10 }), fc.uuid()])(
     "连续两次 Shift+点击同一元素应该恢复原状态",
-    (currentSelection, clickedId) => {
+    (currentSelection: unknown, clickedId: unknown) => {
+      const typedCurrentSelection = currentSelection as string[];
+      const typedClickedId = clickedId as string;
       const afterFirstClick = selectionUtils.calculateToggleSelection(
-        currentSelection,
-        clickedId,
+        typedCurrentSelection,
+        typedClickedId,
       );
       const afterSecondClick = selectionUtils.calculateToggleSelection(
         afterFirstClick,
-        clickedId,
+        typedClickedId,
       );
 
       // 两次点击后应该恢复原状态
-      expect(afterSecondClick.sort()).toEqual(currentSelection.sort());
+      expect(afterSecondClick.sort()).toEqual(typedCurrentSelection.sort());
     },
   );
 
@@ -434,10 +449,12 @@ describe("Property 4: 多选操作正确性", () => {
    */
   test.prop([fc.array(fc.uuid(), { minLength: 0, maxLength: 10 }), fc.uuid()])(
     "选择操作应该保持元素唯一性",
-    (currentSelection, clickedId) => {
+    (currentSelection: unknown, clickedId: unknown) => {
+      const typedCurrentSelection = currentSelection as string[];
+      const typedClickedId = clickedId as string;
       const result = selectionUtils.calculateToggleSelection(
-        currentSelection,
-        clickedId,
+        typedCurrentSelection,
+        typedClickedId,
       );
 
       // 结果中不应该有重复元素
@@ -460,10 +477,11 @@ describe("Property 5: 组合操作正确性", () => {
    */
   test.prop([fc.integer({ min: 0, max: 100 })])(
     "只有选中 2 个或更多元素时才能组合",
-    (selectedCount) => {
-      const canGroup = groupUtils.canGroup(selectedCount);
+    (selectedCount: unknown) => {
+      const typedSelectedCount = selectedCount as number;
+      const canGroup = groupUtils.canGroup(typedSelectedCount);
 
-      if (selectedCount >= 2) {
+      if (typedSelectedCount >= 2) {
         expect(canGroup).toBe(true);
       } else {
         expect(canGroup).toBe(false);
@@ -477,17 +495,19 @@ describe("Property 5: 组合操作正确性", () => {
   test.prop([
     fc.integer({ min: 2, max: 100 }),
     fc.integer({ min: 2, max: 50 }),
-  ])("组合后元素数量应该正确减少", (originalCount, groupedCount) => {
+  ])("组合后元素数量应该正确减少", (originalCount: unknown, groupedCount: unknown) => {
+    const typedOriginalCount = originalCount as number;
+    const typedGroupedCount = groupedCount as number;
     // 确保被组合的数量不超过原始数量
-    fc.pre(groupedCount <= originalCount);
+    fc.pre(typedGroupedCount <= typedOriginalCount);
 
     const resultCount = groupUtils.calculateGroupedCount(
-      originalCount,
-      groupedCount,
+      typedOriginalCount,
+      typedGroupedCount,
     );
 
     // 组合后数量 = 原始数量 - 被组合数量 + 1
-    expect(resultCount).toBe(originalCount - groupedCount + 1);
+    expect(resultCount).toBe(typedOriginalCount - typedGroupedCount + 1);
 
     // 结果应该为正数
     expect(resultCount).toBeGreaterThan(0);
@@ -499,17 +519,19 @@ describe("Property 5: 组合操作正确性", () => {
   test.prop([
     fc.integer({ min: 1, max: 100 }),
     fc.integer({ min: 2, max: 50 }),
-  ])("取消组合后元素数量应该正确增加", (originalCount, ungroupedCount) => {
+  ])("取消组合后元素数量应该正确增加", (originalCount: unknown, ungroupedCount: unknown) => {
+    const typedOriginalCount = originalCount as number;
+    const typedUngroupedCount = ungroupedCount as number;
     const resultCount = groupUtils.calculateUngroupedCount(
-      originalCount,
-      ungroupedCount,
+      typedOriginalCount,
+      typedUngroupedCount,
     );
 
     // 取消组合后数量 = 原始数量 - 1 + 组内元素数量
-    expect(resultCount).toBe(originalCount - 1 + ungroupedCount);
+    expect(resultCount).toBe(typedOriginalCount - 1 + typedUngroupedCount);
 
     // 结果应该大于原始数量（因为组被拆分）
-    expect(resultCount).toBeGreaterThan(originalCount);
+    expect(resultCount).toBeGreaterThan(typedOriginalCount);
   });
 
   /**
@@ -517,34 +539,37 @@ describe("Property 5: 组合操作正确性", () => {
    */
   test.prop([fc.integer({ min: 2, max: 50 }), fc.integer({ min: 2, max: 20 })])(
     "组合然后取消组合应该恢复原始元素数量",
-    (originalCount, groupedCount) => {
+    (originalCount: unknown, groupedCount: unknown) => {
+      const typedOriginalCount = originalCount as number;
+      const typedGroupedCount = groupedCount as number;
       // 确保被组合的数量不超过原始数量
-      fc.pre(groupedCount <= originalCount);
+      fc.pre(typedGroupedCount <= typedOriginalCount);
 
       // 组合
       const afterGroup = groupUtils.calculateGroupedCount(
-        originalCount,
-        groupedCount,
+        typedOriginalCount,
+        typedGroupedCount,
       );
 
       // 取消组合（组内元素数量等于被组合的数量）
       const afterUngroup = groupUtils.calculateUngroupedCount(
         afterGroup,
-        groupedCount,
+        typedGroupedCount,
       );
 
       // 应该恢复原始数量
-      expect(afterUngroup).toBe(originalCount);
+      expect(afterUngroup).toBe(typedOriginalCount);
     },
   );
 
   /**
    * Property: 只有组对象才能取消组合
    */
-  test.prop([fc.boolean()])("只有组对象才能取消组合", (isGroup) => {
-    const canUngroup = groupUtils.canUngroup(isGroup);
+  test.prop([fc.boolean()])("只有组对象才能取消组合", (isGroup: unknown) => {
+    const typedIsGroup = isGroup as boolean;
+    const canUngroup = groupUtils.canUngroup(typedIsGroup);
 
-    expect(canUngroup).toBe(isGroup);
+    expect(canUngroup).toBe(typedIsGroup);
   });
 });
 
@@ -619,10 +644,11 @@ describe("Property 6: 删除操作正确性", () => {
    */
   test.prop([fc.integer({ min: 0, max: 100 })])(
     "只有选中元素时才能删除",
-    (selectedCount) => {
-      const canDelete = deleteUtils.canDelete(selectedCount);
+    (selectedCount: unknown) => {
+      const typedSelectedCount = selectedCount as number;
+      const canDelete = deleteUtils.canDelete(typedSelectedCount);
 
-      if (selectedCount > 0) {
+      if (typedSelectedCount > 0) {
         expect(canDelete).toBe(true);
       } else {
         expect(canDelete).toBe(false);
@@ -636,17 +662,19 @@ describe("Property 6: 删除操作正确性", () => {
   test.prop([
     fc.integer({ min: 1, max: 100 }),
     fc.integer({ min: 1, max: 50 }),
-  ])("删除后元素数量应该正确减少", (originalCount, deletedCount) => {
+  ])("删除后元素数量应该正确减少", (originalCount: unknown, deletedCount: unknown) => {
+    const typedOriginalCount = originalCount as number;
+    const typedDeletedCount = deletedCount as number;
     // 确保删除数量不超过原始数量
-    fc.pre(deletedCount <= originalCount);
+    fc.pre(typedDeletedCount <= typedOriginalCount);
 
     const resultCount = deleteUtils.calculateDeletedCount(
-      originalCount,
-      deletedCount,
+      typedOriginalCount,
+      typedDeletedCount,
     );
 
     // 删除后数量 = 原始数量 - 删除数量
-    expect(resultCount).toBe(originalCount - deletedCount);
+    expect(resultCount).toBe(typedOriginalCount - typedDeletedCount);
 
     // 结果应该非负
     expect(resultCount).toBeGreaterThanOrEqual(0);
@@ -658,19 +686,21 @@ describe("Property 6: 删除操作正确性", () => {
   test.prop([
     fc.array(fc.uuid(), { minLength: 1, maxLength: 20 }),
     fc.array(fc.uuid(), { minLength: 1, maxLength: 10 }),
-  ])("删除后被删除的元素不应该存在", (originalElements, deletedElements) => {
+  ])("删除后被删除的元素不应该存在", (originalElements: unknown, deletedElements: unknown) => {
+    const typedOriginalElements = originalElements as string[];
+    const typedDeletedElements = deletedElements as string[];
     // 确保删除的元素是原始元素的子集
-    const validDeletedElements = deletedElements.filter((id) =>
-      originalElements.includes(id),
+    const validDeletedElements = typedDeletedElements.filter((id: string) =>
+      typedOriginalElements.includes(id),
     );
 
     const remaining = deleteUtils.calculateRemainingElements(
-      originalElements,
+      typedOriginalElements,
       validDeletedElements,
     );
 
     // 被删除的元素不应该在剩余列表中
-    validDeletedElements.forEach((id) => {
+    validDeletedElements.forEach((id: string) => {
       expect(deleteUtils.isDeleted(remaining, id)).toBe(true);
     });
   });
@@ -680,19 +710,21 @@ describe("Property 6: 删除操作正确性", () => {
    */
   test.prop([fc.array(fc.uuid(), { minLength: 2, maxLength: 20 }), fc.nat()])(
     "删除后未选中的元素应该保持不变",
-    (originalElements, deleteSeed) => {
+    (originalElements: unknown, deleteSeed: unknown) => {
+      const typedOriginalElements = originalElements as string[];
+      const typedDeleteSeed = deleteSeed as number;
       // 选择一部分元素删除
-      const deleteCount = (deleteSeed % (originalElements.length - 1)) + 1;
-      const deletedElements = originalElements.slice(0, deleteCount);
-      const remainingExpected = originalElements.slice(deleteCount);
+      const deleteCount = (typedDeleteSeed % (typedOriginalElements.length - 1)) + 1;
+      const deletedElements = typedOriginalElements.slice(0, deleteCount);
+      const remainingExpected = typedOriginalElements.slice(deleteCount);
 
       const remaining = deleteUtils.calculateRemainingElements(
-        originalElements,
+        typedOriginalElements,
         deletedElements,
       );
 
       // 未删除的元素应该保留
-      remainingExpected.forEach((id) => {
+      remainingExpected.forEach((id: string) => {
         expect(remaining).toContain(id);
       });
     },
@@ -704,20 +736,22 @@ describe("Property 6: 删除操作正确性", () => {
   test.prop([
     fc.array(fc.uuid(), { minLength: 2, maxLength: 20 }),
     fc.array(fc.uuid(), { minLength: 1, maxLength: 10 }),
-  ])("锁定的元素不应该被删除", (selectedElements, lockedIds) => {
+  ])("锁定的元素不应该被删除", (selectedElements: unknown, lockedIds: unknown) => {
+    const typedSelectedElements = selectedElements as string[];
+    const typedLockedIds = lockedIds as string[];
     const deletable = deleteUtils.filterDeletableElements(
-      selectedElements,
-      lockedIds,
+      typedSelectedElements,
+      typedLockedIds,
     );
 
     // 锁定的元素不应该在可删除列表中
-    lockedIds.forEach((id) => {
+    typedLockedIds.forEach((id: string) => {
       expect(deletable).not.toContain(id);
     });
 
     // 未锁定的元素应该在可删除列表中
-    selectedElements.forEach((id) => {
-      if (!lockedIds.includes(id)) {
+    typedSelectedElements.forEach((id: string) => {
+      if (!typedLockedIds.includes(id)) {
         expect(deletable).toContain(id);
       }
     });
@@ -729,20 +763,22 @@ describe("Property 6: 删除操作正确性", () => {
   test.prop([
     fc.array(fc.uuid(), { minLength: 1, maxLength: 10 }),
     fc.array(fc.uuid(), { minLength: 1, maxLength: 10 }),
-  ])("删除后选择状态应该正确更新", (selectedIds, deletedIds) => {
+  ])("删除后选择状态应该正确更新", (selectedIds: unknown, deletedIds: unknown) => {
+    const typedSelectedIds = selectedIds as string[];
+    const typedDeletedIds = deletedIds as string[];
     const remainingSelection = deleteUtils.calculateRemainingSelection(
-      selectedIds,
-      deletedIds,
+      typedSelectedIds,
+      typedDeletedIds,
     );
 
     // 被删除的元素不应该在选择中
-    deletedIds.forEach((id) => {
+    typedDeletedIds.forEach((id: string) => {
       expect(remainingSelection).not.toContain(id);
     });
 
     // 未删除的选中元素应该保留
-    selectedIds.forEach((id) => {
-      if (!deletedIds.includes(id)) {
+    typedSelectedIds.forEach((id: string) => {
+      if (!typedDeletedIds.includes(id)) {
         expect(remainingSelection).toContain(id);
       }
     });
@@ -753,10 +789,11 @@ describe("Property 6: 删除操作正确性", () => {
    */
   test.prop([fc.array(fc.uuid(), { minLength: 1, maxLength: 10 })])(
     "删除所有选中元素后选择应该为空",
-    (selectedIds) => {
+    (selectedIds: unknown) => {
+      const typedSelectedIds = selectedIds as string[];
       const remainingSelection = deleteUtils.calculateRemainingSelection(
-        selectedIds,
-        selectedIds,
+        typedSelectedIds,
+        typedSelectedIds,
       );
 
       expect(remainingSelection).toHaveLength(0);

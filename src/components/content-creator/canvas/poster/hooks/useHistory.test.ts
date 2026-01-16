@@ -28,25 +28,27 @@ describe("Property 3: 撤销/重做往返", () => {
       maxLength: 20,
     }),
     fc.integer({ min: 1, max: 19 }),
-  ])("撤销后重做应该恢复到撤销前的状态", (stack, indexOffset) => {
+  ])("撤销后重做应该恢复到撤销前的状态", (stack: unknown, indexOffset: unknown) => {
+    const typedStack = stack as string[];
+    const typedIndexOffset = indexOffset as number;
     // 确保索引在有效范围内
-    const currentIndex = Math.min(indexOffset, stack.length - 1);
+    const currentIndex = Math.min(typedIndexOffset, typedStack.length - 1);
     fc.pre(currentIndex > 0); // 必须能撤销
 
     // 执行撤销
-    const afterUndo = historyUtils.simulateUndo(stack, currentIndex);
+    const afterUndo = historyUtils.simulateUndo(typedStack, currentIndex);
 
     // 确保撤销成功
     fc.pre(afterUndo.state !== null);
 
     // 执行重做
-    const afterRedo = historyUtils.simulateRedo(stack, afterUndo.currentIndex);
+    const afterRedo = historyUtils.simulateRedo(typedStack, afterUndo.currentIndex);
 
     // 重做后应该恢复到撤销前的索引
     expect(afterRedo.currentIndex).toBe(currentIndex);
 
     // 重做后应该恢复到撤销前的状态
-    expect(afterRedo.state).toBe(stack[currentIndex]);
+    expect(afterRedo.state).toBe(typedStack[currentIndex]);
   });
 
   /**
@@ -62,16 +64,19 @@ describe("Property 3: 撤销/重做往返", () => {
     fc.integer({ min: 10, max: 100 }),
   ])(
     "添加状态后撤销应该恢复到添加前的状态",
-    (initialStack, newState, maxHistory) => {
+    (initialStack: unknown, newState: unknown, maxHistory: unknown) => {
+      const typedInitialStack = initialStack as string[];
+      const typedNewState = newState as string;
+      const typedMaxHistory = maxHistory as number;
       // 初始索引在栈顶
-      const initialIndex = initialStack.length - 1;
+      const initialIndex = typedInitialStack.length - 1;
 
       // 添加新状态
       const afterAdd = historyUtils.addState(
-        initialStack,
+        typedInitialStack,
         initialIndex,
-        newState,
-        maxHistory,
+        typedNewState,
+        typedMaxHistory,
       );
 
       // 执行撤销
@@ -81,7 +86,7 @@ describe("Property 3: 撤销/重做往返", () => {
       );
 
       // 撤销后应该恢复到添加前的状态
-      expect(afterUndo.state).toBe(initialStack[initialIndex]);
+      expect(afterUndo.state).toBe(typedInitialStack[initialIndex]);
     },
   );
 
@@ -94,24 +99,26 @@ describe("Property 3: 撤销/重做往返", () => {
       maxLength: 20,
     }),
     fc.integer({ min: 1, max: 10 }),
-  ])("连续撤销然后连续重做应该恢复到原始状态", (stack, undoCount) => {
+  ])("连续撤销然后连续重做应该恢复到原始状态", (stack: unknown, undoCount: unknown) => {
+    const typedStack = stack as string[];
+    const typedUndoCount = undoCount as number;
     // 从栈顶开始
-    const initialIndex = stack.length - 1;
+    const initialIndex = typedStack.length - 1;
 
     // 确保撤销次数不超过可撤销的次数
-    const actualUndoCount = Math.min(undoCount, initialIndex);
+    const actualUndoCount = Math.min(typedUndoCount, initialIndex);
     fc.pre(actualUndoCount > 0);
 
     // 连续撤销
     let currentIndex = initialIndex;
     for (let i = 0; i < actualUndoCount; i++) {
-      const result = historyUtils.simulateUndo(stack, currentIndex);
+      const result = historyUtils.simulateUndo(typedStack, currentIndex);
       currentIndex = result.currentIndex;
     }
 
     // 连续重做相同次数
     for (let i = 0; i < actualUndoCount; i++) {
-      const result = historyUtils.simulateRedo(stack, currentIndex);
+      const result = historyUtils.simulateRedo(typedStack, currentIndex);
       currentIndex = result.currentIndex;
     }
 
@@ -128,11 +135,13 @@ describe("Property 3: 撤销/重做往返", () => {
       maxLength: 20,
     }),
     fc.integer({ min: 1, max: 19 }),
-  ])("撤销操作应该将索引减少 1", (stack, indexOffset) => {
-    const currentIndex = Math.min(indexOffset, stack.length - 1);
+  ])("撤销操作应该将索引减少 1", (stack: unknown, indexOffset: unknown) => {
+    const typedStack = stack as string[];
+    const typedIndexOffset = indexOffset as number;
+    const currentIndex = Math.min(typedIndexOffset, typedStack.length - 1);
     fc.pre(currentIndex > 0); // 必须能撤销
 
-    const result = historyUtils.simulateUndo(stack, currentIndex);
+    const result = historyUtils.simulateUndo(typedStack, currentIndex);
 
     expect(result.currentIndex).toBe(currentIndex - 1);
   });
@@ -146,11 +155,13 @@ describe("Property 3: 撤销/重做往返", () => {
       maxLength: 20,
     }),
     fc.integer({ min: 0, max: 18 }),
-  ])("重做操作应该将索引增加 1", (stack, indexOffset) => {
-    const currentIndex = Math.min(indexOffset, stack.length - 2);
-    fc.pre(currentIndex < stack.length - 1); // 必须能重做
+  ])("重做操作应该将索引增加 1", (stack: unknown, indexOffset: unknown) => {
+    const typedStack = stack as string[];
+    const typedIndexOffset = indexOffset as number;
+    const currentIndex = Math.min(typedIndexOffset, typedStack.length - 2);
+    fc.pre(currentIndex < typedStack.length - 1); // 必须能重做
 
-    const result = historyUtils.simulateRedo(stack, currentIndex);
+    const result = historyUtils.simulateRedo(typedStack, currentIndex);
 
     expect(result.currentIndex).toBe(currentIndex + 1);
   });
@@ -163,8 +174,9 @@ describe("Property 3: 撤销/重做往返", () => {
       minLength: 1,
       maxLength: 20,
     }),
-  ])("在栈底时撤销应该无效", (stack) => {
-    const result = historyUtils.simulateUndo(stack, 0);
+  ])("在栈底时撤销应该无效", (stack: unknown) => {
+    const typedStack = stack as string[];
+    const result = historyUtils.simulateUndo(typedStack, 0);
 
     // 索引应该保持不变
     expect(result.currentIndex).toBe(0);
@@ -181,9 +193,10 @@ describe("Property 3: 撤销/重做往返", () => {
       minLength: 1,
       maxLength: 20,
     }),
-  ])("在栈顶时重做应该无效", (stack) => {
-    const topIndex = stack.length - 1;
-    const result = historyUtils.simulateRedo(stack, topIndex);
+  ])("在栈顶时重做应该无效", (stack: unknown) => {
+    const typedStack = stack as string[];
+    const topIndex = typedStack.length - 1;
+    const result = historyUtils.simulateRedo(typedStack, topIndex);
 
     // 索引应该保持不变
     expect(result.currentIndex).toBe(topIndex);
@@ -198,17 +211,19 @@ describe("Property 3: 撤销/重做往返", () => {
   test.prop([
     fc.integer({ min: 0, max: 100 }),
     fc.integer({ min: 1, max: 100 }),
-  ])("canUndo 和 canRedo 应该正确反映可操作性", (currentIndex, stackLength) => {
-    fc.pre(currentIndex < stackLength);
+  ])("canUndo 和 canRedo 应该正确反映可操作性", (currentIndex: unknown, stackLength: unknown) => {
+    const typedCurrentIndex = currentIndex as number;
+    const typedStackLength = stackLength as number;
+    fc.pre(typedCurrentIndex < typedStackLength);
 
-    const canUndo = historyUtils.canUndo(currentIndex);
-    const canRedo = historyUtils.canRedo(currentIndex, stackLength);
+    const canUndo = historyUtils.canUndo(typedCurrentIndex);
+    const canRedo = historyUtils.canRedo(typedCurrentIndex, typedStackLength);
 
     // canUndo 应该在索引 > 0 时为 true
-    expect(canUndo).toBe(currentIndex > 0);
+    expect(canUndo).toBe(typedCurrentIndex > 0);
 
     // canRedo 应该在索引 < stackLength - 1 时为 true
-    expect(canRedo).toBe(currentIndex < stackLength - 1);
+    expect(canRedo).toBe(typedCurrentIndex < typedStackLength - 1);
   });
 
   /**
@@ -221,16 +236,19 @@ describe("Property 3: 撤销/重做往返", () => {
     }),
     fc.string({ minLength: 1, maxLength: 100 }),
     fc.integer({ min: 10, max: 100 }),
-  ])("添加状态后应该清除重做栈", (stack, newState, maxHistory) => {
+  ])("添加状态后应该清除重做栈", (stack: unknown, newState: unknown, maxHistory: unknown) => {
+    const typedStack = stack as string[];
+    const typedNewState = newState as string;
+    const typedMaxHistory = maxHistory as number;
     // 从中间位置添加（模拟撤销后添加新状态）
-    const middleIndex = Math.floor(stack.length / 2);
-    fc.pre(middleIndex > 0 && middleIndex < stack.length - 1);
+    const middleIndex = Math.floor(typedStack.length / 2);
+    fc.pre(middleIndex > 0 && middleIndex < typedStack.length - 1);
 
     const result = historyUtils.addState(
-      stack,
+      typedStack,
       middleIndex,
-      newState,
-      maxHistory,
+      typedNewState,
+      typedMaxHistory,
     );
 
     // 新栈长度应该是 middleIndex + 2（原来的 0 到 middleIndex，加上新状态）
@@ -240,7 +258,7 @@ describe("Property 3: 撤销/重做往返", () => {
     expect(result.currentIndex).toBe(result.stack.length - 1);
 
     // 新状态应该在栈顶
-    expect(result.stack[result.currentIndex]).toBe(newState);
+    expect(result.stack[result.currentIndex]).toBe(typedNewState);
   });
 
   /**
@@ -248,25 +266,27 @@ describe("Property 3: 撤销/重做往返", () => {
    */
   test.prop([fc.integer({ min: 5, max: 20 }), fc.integer({ min: 1, max: 10 })])(
     "历史记录应该受 maxHistory 限制",
-    (maxHistory, extraStates) => {
+    (maxHistory: unknown, extraStates: unknown) => {
+      const typedMaxHistory = maxHistory as number;
+      const typedExtraStates = extraStates as number;
       let stack: string[] = [];
       let currentIndex = -1;
 
       // 添加超过 maxHistory 的状态
-      const totalStates = maxHistory + extraStates;
+      const totalStates = typedMaxHistory + typedExtraStates;
       for (let i = 0; i < totalStates; i++) {
         const result = historyUtils.addState(
           stack,
           currentIndex,
           `state-${i}`,
-          maxHistory,
+          typedMaxHistory,
         );
         stack = result.stack;
         currentIndex = result.currentIndex;
       }
 
       // 栈长度不应该超过 maxHistory
-      expect(stack.length).toBeLessThanOrEqual(maxHistory);
+      expect(stack.length).toBeLessThanOrEqual(typedMaxHistory);
 
       // 最新的状态应该保留
       expect(stack[stack.length - 1]).toBe(`state-${totalStates - 1}`);

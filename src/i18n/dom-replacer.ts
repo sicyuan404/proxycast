@@ -9,6 +9,7 @@
  * - Replaces Chinese text with translations based on the current language
  * - Skips script, style, and already patched nodes
  * - Handles multiple Chinese segments in a single text node
+ * - Uses WeakMap to cache processed nodes for incremental updates
  * - Marks patched nodes to avoid double-patching
  */
 
@@ -22,13 +23,38 @@ function escapeRegExp(str: string): string {
 }
 
 /**
+ * Cache for processed nodes using WeakMap (auto garbage collection)
+ * Format: WeakMap<TextNode, { language: Language, originalText: string }>
+ */
+const processedNodesCache = new WeakMap<Text, { language: Language; originalText: string }>();
+
+/**
+ * Current language being used
+ */
+let currentLanguage: Language = "zh";
+
+/**
+ * Clear the cache when language changes
+ */
+function clearCache(): void {
+  processedNodesCache.clear();
+}
+
+/**
  * Replace text in DOM nodes with translations
  *
  * @param language - Target language ('zh' or 'en')
+ * @param root - Optional root element to process (default: document.body)
  */
-export function replaceTextInDOM(language: Language): void {
+export function replaceTextInDOM(language: Language, root: Element = document.body): void {
   const patches = getTextMap(language);
   const startTime = performance.now();
+
+  // Check if language changed, clear cache if needed
+  if (language !== currentLanguage) {
+    clearCache();
+    currentLanguage = language;
+  }
 
   // Sort patches by length (longest first) to avoid partial replacements
   // This ensures "初次设置向导" is replaced before "初次" or "设置"
@@ -38,7 +64,7 @@ export function replaceTextInDOM(language: Language): void {
 
   // Create a TreeWalker to traverse all text nodes
   const walker = document.createTreeWalker(
-    document.body,
+    root,
     NodeFilter.SHOW_TEXT,
     {
       acceptNode: (node) => {
@@ -65,17 +91,33 @@ export function replaceTextInDOM(language: Language): void {
           return NodeFilter.FILTER_REJECT;
         }
 
+        // Skip already processed nodes (incremental update optimization)
+        const cached = processedNodesCache.get(node as Text);
+        if (cached && cached.language === language) {
+          return NodeFilter.FILTER_REJECT;
+        }
+
         return NodeFilter.FILTER_ACCEPT;
       },
     },
   );
 
   const nodesToReplace: Array<{ node: Text; text: string }> = [];
+  let processedCount = 0;
+  let skippedCount = 0;
 
   let node: Node | null;
   while ((node = walker.nextNode())) {
-    const text = node.textContent;
+    const textNode = node as Text;
+    const text = textNode.textContent;
     if (!text) continue;
+
+    // Check if this node was already processed with the same language
+    const cached = processedNodesCache.get(textNode);
+    if (cached && cached.language === language && cached.originalText === text) {
+      skippedCount++;
+      continue;
+    }
 
     // Apply patches from longest to shortest to avoid partial replacements
     let newText = text;
@@ -95,10 +137,17 @@ export function replaceTextInDOM(language: Language): void {
 
     if (hasMatch) {
       nodesToReplace.push({
-        node: node as Text,
+        node: textNode,
         text: newText,
       });
     }
+
+    // Cache the processed node (even if no match, to avoid reprocessing)
+    processedNodesCache.set(textNode, {
+      language,
+      originalText: text,
+    });
+    processedCount++;
   }
 
   // Apply replacements (batch for performance)
@@ -113,15 +162,26 @@ export function replaceTextInDOM(language: Language): void {
 
   // Log if slow (> 50ms)
   if (duration > 50) {
-    console.warn(`[i18n] DOM replacement took ${duration.toFixed(2)}ms`);
+    console.warn(
+      `[i18n] DOM replacement took ${duration.toFixed(2)}ms (processed: ${processedCount}, skipped: ${skippedCount}, replaced: ${nodesToReplace.length})`
+    );
   } else {
-    console.debug(`[i18n] DOM replacement took ${duration.toFixed(2)}ms`);
+    console.debug(
+      `[i18n] DOM replacement took ${duration.toFixed(2)}ms (processed: ${processedCount}, skipped: ${skippedCount}, replaced: ${nodesToReplace.length})`
+    );
   }
 
   // Track for analytics (optional)
   if (window.__I18N_METRICS__) {
     window.__I18N_METRICS__.patchTimes.push(duration);
   }
+}
+
+/**
+ * Clear the cache (useful for testing or forced refresh)
+ */
+export function clearI18nCache(): void {
+  clearCache();
 }
 
 // Declare global type for metrics

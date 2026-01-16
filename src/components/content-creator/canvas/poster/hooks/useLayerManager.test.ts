@@ -229,8 +229,8 @@ describe("useLayerManager", () => {
      */
     it("图层数量应该等于画布元素数量", () => {
       fc.assert(
-        fc.property(elementsArb, (elements) => {
-          const objects = elements.map((config) =>
+        fc.property(elementsArb, (elements: any[]) => {
+          const objects = elements.map((config: any) =>
             createMockFabricObject({
               type: config.type,
               visible: config.visible,
@@ -238,7 +238,7 @@ describe("useLayerManager", () => {
               evented: !config.locked,
             }),
           );
-          const layers = objects.map((obj, index) =>
+          const layers = objects.map((obj: any, index: number) =>
             layerUtils.createLayerFromObject(obj, index),
           );
           expect(layers.length).toBe(objects.length);
@@ -253,8 +253,8 @@ describe("useLayerManager", () => {
      */
     it("图层顺序应该与画布元素 z-index 顺序一致（反转）", () => {
       fc.assert(
-        fc.property(elementsArb, (elements) => {
-          const objects = elements.map((config, index) =>
+        fc.property(elementsArb, (elements: any[]) => {
+          const objects = elements.map((config: any, index: number) =>
             createMockFabricObject({
               type: config.type,
               visible: config.visible,
@@ -264,7 +264,7 @@ describe("useLayerManager", () => {
             }),
           );
           const layers = objects
-            .map((obj, index) => layerUtils.createLayerFromObject(obj, index))
+            .map((obj: any, index: number) => layerUtils.createLayerFromObject(obj, index))
             .reverse();
           for (let i = 0; i < layers.length; i++) {
             const objectIndex = objects.length - 1 - i;
@@ -285,8 +285,8 @@ describe("useLayerManager", () => {
           fc.array(elementConfigArb, { minLength: 3, maxLength: 10 }),
           fc.nat(),
           fc.nat(),
-          (elements, fromSeed, toSeed) => {
-            const objects = elements.map((config, index) =>
+          (elements: any[], fromSeed: number, toSeed: number) => {
+            const objects = elements.map((config: any, index: number) =>
               createMockFabricObject({
                 type: config.type,
                 visible: config.visible,
@@ -320,8 +320,8 @@ describe("useLayerManager", () => {
      */
     it("锁定的图层对应的元素应该不可选中", () => {
       fc.assert(
-        fc.property(elementsArb, (elements) => {
-          const objects = elements.map((config) =>
+        fc.property(elementsArb, (elements: any[]) => {
+          const objects = elements.map((config: any) =>
             createMockFabricObject({
               type: config.type,
               visible: config.visible,
@@ -329,7 +329,7 @@ describe("useLayerManager", () => {
               evented: !config.locked,
             }),
           );
-          const layers = objects.map((obj, index) =>
+          const layers = objects.map((obj: any, index: number) =>
             layerUtils.createLayerFromObject(obj, index),
           );
           for (let i = 0; i < layers.length; i++) {
@@ -354,8 +354,8 @@ describe("useLayerManager", () => {
      */
     it("隐藏的图层对应的元素应该不可见", () => {
       fc.assert(
-        fc.property(elementsArb, (elements) => {
-          const objects = elements.map((config) =>
+        fc.property(elementsArb, (elements: any[]) => {
+          const objects = elements.map((config: any) =>
             createMockFabricObject({
               type: config.type,
               visible: config.visible,
@@ -363,7 +363,7 @@ describe("useLayerManager", () => {
               evented: !config.locked,
             }),
           );
-          const layers = objects.map((obj, index) =>
+          const layers = objects.map((obj: any, index: number) =>
             layerUtils.createLayerFromObject(obj, index),
           );
           for (let i = 0; i < layers.length; i++) {
@@ -380,7 +380,7 @@ describe("useLayerManager", () => {
      */
     it("切换可见性后应该同步到画布对象", () => {
       fc.assert(
-        fc.property(fc.boolean(), fc.boolean(), (initialVisible, toggleTo) => {
+        fc.property(fc.boolean(), fc.boolean(), (initialVisible: boolean, toggleTo: boolean) => {
           const obj = createMockFabricObject({
             type: "rect",
             visible: initialVisible,
@@ -398,7 +398,7 @@ describe("useLayerManager", () => {
      */
     it("切换锁定状态后应该同步到画布对象", () => {
       fc.assert(
-        fc.property(fc.boolean(), fc.boolean(), (initialLocked, toggleTo) => {
+        fc.property(fc.boolean(), fc.boolean(), (initialLocked: boolean, toggleTo: boolean) => {
           const obj = createMockFabricObject({
             type: "rect",
             selectable: !initialLocked,
@@ -420,8 +420,8 @@ describe("useLayerManager", () => {
      */
     it("点击图层应该选中对应的可选元素", () => {
       fc.assert(
-        fc.property(elementsArb, fc.nat(), (elements, indexSeed) => {
-          const objects = elements.map((config, index) =>
+        fc.property(elementsArb, fc.nat(), (elements: any[], indexSeed: number) => {
+          const objects = elements.map((config: any, index: number) =>
             createMockFabricObject({
               type: config.type,
               visible: config.visible,
@@ -430,7 +430,7 @@ describe("useLayerManager", () => {
               layerId: `layer-${index}`,
             }),
           );
-          const layers = objects.map((obj, index) =>
+          const layers = objects.map((obj: any, index: number) =>
             layerUtils.createLayerFromObject(obj, index),
           );
 

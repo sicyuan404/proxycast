@@ -68,7 +68,8 @@ describe("Property 9: 页面操作正确性", () => {
    */
   test.prop([pagesWithIndexArb])(
     "添加页面后页面数量应该增加 1",
-    ({ pages, currentIndex }) => {
+    (input: unknown) => {
+      const { pages, currentIndex } = input as { pages: any[]; currentIndex: number };
       const result = pageUtils.addPage(pages, currentIndex);
 
       // 页面数量应该增加 1
@@ -79,7 +80,7 @@ describe("Property 9: 页面操作正确性", () => {
 
       // 新页面应该有唯一的 ID
       const newPage = result.pages[result.currentIndex];
-      const originalIds = pages.map((p) => p.id);
+      const originalIds = pages.map((p: any) => p.id);
       expect(originalIds).not.toContain(newPage.id);
     },
   );
@@ -90,7 +91,8 @@ describe("Property 9: 页面操作正确性", () => {
    */
   test.prop([pagesWithIndexArb])(
     "添加页面应该继承当前页面的尺寸",
-    ({ pages, currentIndex }) => {
+    (input: unknown) => {
+      const { pages, currentIndex } = input as { pages: any[]; currentIndex: number };
       const result = pageUtils.addPage(pages, currentIndex);
       const currentPage = pages[currentIndex];
       const newPage = result.pages[result.currentIndex];
@@ -106,7 +108,7 @@ describe("Property 9: 页面操作正确性", () => {
    * Validates: Requirements 8.4
    */
   test.prop([
-    fc.array(posterPageArb, { minLength: 2, maxLength: 10 }).chain((pages) =>
+    fc.array(posterPageArb, { minLength: 2, maxLength: 10 }).chain((pages: any[]) =>
       fc.record({
         pages: fc.constant(pages),
         currentIndex: fc.integer({ min: 0, max: pages.length - 1 }),
@@ -115,7 +117,8 @@ describe("Property 9: 页面操作正确性", () => {
     ),
   ])(
     "删除页面后页面数量应该减少 1（多于一页时）",
-    ({ pages, currentIndex, deleteIndex }) => {
+    (input: unknown) => {
+      const { pages, currentIndex, deleteIndex } = input as { pages: any[]; currentIndex: number; deleteIndex: number };
       const result = pageUtils.deletePage(pages, currentIndex, deleteIndex);
 
       // 应该成功删除
@@ -126,7 +129,7 @@ describe("Property 9: 页面操作正确性", () => {
 
         // 被删除的页面不应该存在
         const deletedPageId = pages[deleteIndex].id;
-        expect(result.pages.map((p) => p.id)).not.toContain(deletedPageId);
+        expect(result.pages.map((p: any) => p.id)).not.toContain(deletedPageId);
       }
     },
   );
@@ -135,8 +138,9 @@ describe("Property 9: 页面操作正确性", () => {
    * Property: 只有一页时不能删除
    * Validates: Requirements 8.4
    */
-  test.prop([posterPageArb])("只有一页时不能删除", (page) => {
-    const pages = [page];
+  test.prop([posterPageArb])("只有一页时不能删除", (page: unknown) => {
+    const typedPage = page as any;
+    const pages = [typedPage];
     const result = pageUtils.deletePage(pages, 0, 0);
 
     // 应该返回 null，表示无法删除
@@ -148,13 +152,14 @@ describe("Property 9: 页面操作正确性", () => {
    * Validates: Requirements 8.4
    */
   test.prop([
-    fc.array(posterPageArb, { minLength: 2, maxLength: 10 }).chain((pages) =>
+    fc.array(posterPageArb, { minLength: 2, maxLength: 10 }).chain((pages: any[]) =>
       fc.record({
         pages: fc.constant(pages),
         currentIndex: fc.integer({ min: 0, max: pages.length - 1 }),
       }),
     ),
-  ])("删除当前页面后应该切换到相邻页面", ({ pages, currentIndex }) => {
+  ])("删除当前页面后应该切换到相邻页面", (input: unknown) => {
+    const { pages, currentIndex } = input as { pages: any[]; currentIndex: number };
     const result = pageUtils.deletePage(pages, currentIndex, currentIndex);
 
     expect(result).not.toBeNull();

@@ -17,7 +17,10 @@ import type { RelayInfo } from "@/hooks/useDeepLink";
  */
 const hexColorArbitrary = fc
   .array(fc.integer({ min: 0, max: 15 }), { minLength: 6, maxLength: 6 })
-  .map((arr) => "#" + arr.map((n) => n.toString(16)).join(""));
+  .map((arr: unknown) => {
+    const typedArr = arr as number[];
+    return "#" + typedArr.map((n: number) => n.toString(16)).join("");
+  });
 
 /**
  * 生成有效的 RelayInfo 对象的 Arbitrary
@@ -25,13 +28,13 @@ const hexColorArbitrary = fc
 const relayInfoArbitrary: fc.Arbitrary<RelayInfo> = fc.record({
   id: fc
     .string({ minLength: 1, maxLength: 50 })
-    .filter((s) => s.trim().length > 0),
+    .filter((s: string) => s.trim().length > 0),
   name: fc
     .string({ minLength: 1, maxLength: 100 })
-    .filter((s) => s.trim().length > 0),
+    .filter((s: string) => s.trim().length > 0),
   description: fc
     .string({ minLength: 1, maxLength: 500 })
-    .filter((s) => s.trim().length > 0),
+    .filter((s: string) => s.trim().length > 0),
   branding: fc.record({
     logo: fc.webUrl(),
     color: hexColorArbitrary,

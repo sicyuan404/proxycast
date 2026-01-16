@@ -42,7 +42,7 @@ const pageArb = fc
     height: fc.integer({ min: 100, max: 4000 }),
     name: fc.string({ minLength: 1, maxLength: 20 }),
   })
-  .map(({ width, height, name }) => ({
+  .map(({ width, height, name }: { width: number; height: number; name: string }) => ({
     id: crypto.randomUUID(),
     name: name || "页面",
     width,
@@ -86,11 +86,13 @@ describe("Property 10: 导出尺寸正确性", () => {
    */
   test.prop([pageSizeArb, exportScaleArb])(
     "导出尺寸应该等于原始尺寸乘以倍率",
-    ({ width, height }, scale) => {
-      const result = exportUtils.calculateExportSize(width, height, scale);
+    (pageSize: unknown, scale: unknown) => {
+      const { width, height } = pageSize as { width: number; height: number };
+      const typedScale = scale as 1 | 2 | 3;
+      const result = exportUtils.calculateExportSize(width, height, typedScale);
 
-      expect(result.width).toBe(width * scale);
-      expect(result.height).toBe(height * scale);
+      expect(result.width).toBe(width * typedScale);
+      expect(result.height).toBe(height * typedScale);
     },
   );
 
@@ -100,7 +102,8 @@ describe("Property 10: 导出尺寸正确性", () => {
    */
   test.prop([pageSizeArb])(
     "1x 倍率导出尺寸等于原始尺寸",
-    ({ width, height }) => {
+    (pageSize: unknown) => {
+      const { width, height } = pageSize as { width: number; height: number };
       const result = exportUtils.calculateExportSize(width, height, 1);
 
       expect(result.width).toBe(width);
@@ -114,7 +117,8 @@ describe("Property 10: 导出尺寸正确性", () => {
    */
   test.prop([pageSizeArb])(
     "2x 倍率导出尺寸是原始尺寸的两倍",
-    ({ width, height }) => {
+    (pageSize: unknown) => {
+      const { width, height } = pageSize as { width: number; height: number };
       const result = exportUtils.calculateExportSize(width, height, 2);
 
       expect(result.width).toBe(width * 2);
@@ -128,7 +132,8 @@ describe("Property 10: 导出尺寸正确性", () => {
    */
   test.prop([pageSizeArb])(
     "3x 倍率导出尺寸是原始尺寸的三倍",
-    ({ width, height }) => {
+    (pageSize: unknown) => {
+      const { width, height } = pageSize as { width: number; height: number };
       const result = exportUtils.calculateExportSize(width, height, 3);
 
       expect(result.width).toBe(width * 3);
@@ -142,8 +147,10 @@ describe("Property 10: 导出尺寸正确性", () => {
    */
   test.prop([pageSizeArb, exportScaleArb])(
     "导出尺寸始终为正整数",
-    ({ width, height }, scale) => {
-      const result = exportUtils.calculateExportSize(width, height, scale);
+    (pageSize: unknown, scale: unknown) => {
+      const { width, height } = pageSize as { width: number; height: number };
+      const typedScale = scale as 1 | 2 | 3;
+      const result = exportUtils.calculateExportSize(width, height, typedScale);
 
       expect(result.width).toBeGreaterThan(0);
       expect(result.height).toBeGreaterThan(0);
@@ -158,8 +165,10 @@ describe("Property 10: 导出尺寸正确性", () => {
    */
   test.prop([pageSizeArb, exportScaleArb])(
     "宽高比在导出后保持不变",
-    ({ width, height }, scale) => {
-      const result = exportUtils.calculateExportSize(width, height, scale);
+    (pageSize: unknown, scale: unknown) => {
+      const { width, height } = pageSize as { width: number; height: number };
+      const typedScale = scale as 1 | 2 | 3;
+      const result = exportUtils.calculateExportSize(width, height, typedScale);
       const originalRatio = width / height;
       const exportRatio = result.width / result.height;
 
@@ -180,12 +189,16 @@ describe("导出配置验证", () => {
     qualityArb,
     exportScaleArb,
     fc.integer({ min: 1, max: 10 }),
-  ])("有效配置应该通过验证", (format, quality, scale, pageCount) => {
+  ])("有效配置应该通过验证", (format: unknown, quality: unknown, scale: unknown, pageCount: unknown) => {
+    const typedFormat = format as ExportFormat;
+    const typedQuality = quality as number;
+    const typedScale = scale as 1 | 2 | 3;
+    const typedPageCount = pageCount as number;
     const config: ExportConfig = {
-      format,
-      quality,
-      scale,
-      pageIndices: Array.from({ length: pageCount }, (_, i) => i),
+      format: typedFormat,
+      quality: typedQuality,
+      scale: typedScale,
+      pageIndices: Array.from({ length: typedPageCount }, (_, i) => i),
     };
 
     const result = exportUtils.validateConfig(config);
@@ -199,11 +212,14 @@ describe("导出配置验证", () => {
    */
   test.prop([exportFormatArb, qualityArb, exportScaleArb])(
     "空页面索引应该验证失败",
-    (format, quality, scale) => {
+    (format: unknown, quality: unknown, scale: unknown) => {
+      const typedFormat = format as ExportFormat;
+      const typedQuality = quality as number;
+      const typedScale = scale as 1 | 2 | 3;
       const config: ExportConfig = {
-        format,
-        quality,
-        scale,
+        format: typedFormat,
+        quality: typedQuality,
+        scale: typedScale,
         pageIndices: [],
       };
 
@@ -224,11 +240,14 @@ describe("导出配置验证", () => {
       fc.integer({ min: 101, max: 200 }),
     ),
     exportScaleArb,
-  ])("质量超出范围应该验证失败", (format, invalidQuality, scale) => {
+  ])("质量超出范围应该验证失败", (format: unknown, invalidQuality: unknown, scale: unknown) => {
+    const typedFormat = format as ExportFormat;
+    const typedInvalidQuality = invalidQuality as number;
+    const typedScale = scale as 1 | 2 | 3;
     const config: ExportConfig = {
-      format,
-      quality: invalidQuality,
-      scale,
+      format: typedFormat,
+      quality: typedInvalidQuality,
+      scale: typedScale,
       pageIndices: [0],
     };
 
@@ -244,10 +263,12 @@ describe("导出配置验证", () => {
   test.prop([
     fc.array(fc.integer({ min: 0, max: 20 }), { minLength: 1, maxLength: 5 }),
     fc.integer({ min: 1, max: 10 }),
-  ])("页面索引验证应该检测无效索引", (pageIndices, totalPages) => {
-    const result = exportUtils.validatePageIndices(pageIndices, totalPages);
+  ])("页面索引验证应该检测无效索引", (pageIndices: unknown, totalPages: unknown) => {
+    const typedPageIndices = pageIndices as number[];
+    const typedTotalPages = totalPages as number;
+    const result = exportUtils.validatePageIndices(typedPageIndices, typedTotalPages);
 
-    const expectedInvalid = pageIndices.filter((i) => i < 0 || i >= totalPages);
+    const expectedInvalid = typedPageIndices.filter((i: number) => i < 0 || i >= typedTotalPages);
 
     expect(result.valid).toBe(expectedInvalid.length === 0);
     expect(result.invalidIndices).toEqual(expectedInvalid);
@@ -263,11 +284,13 @@ describe("文件名生成", () => {
    */
   test.prop([fc.string({ minLength: 1, maxLength: 20 }), exportFormatArb])(
     "文件名应该包含页面名称",
-    (pageName, format) => {
+    (pageName: unknown, format: unknown) => {
+      const typedPageName = pageName as string;
+      const typedFormat = format as ExportFormat;
       // 过滤掉可能导致问题的字符
       const safeName =
-        pageName.replace(/[^a-zA-Z0-9\u4e00-\u9fa5]/g, "") || "页面";
-      const fileName = exportUtils.generateFileName(safeName, format);
+        typedPageName.replace(/[^a-zA-Z0-9\u4e00-\u9fa5]/g, "") || "页面";
+      const fileName = exportUtils.generateFileName(safeName, typedFormat);
 
       expect(fileName).toContain(safeName);
     },
@@ -278,10 +301,12 @@ describe("文件名生成", () => {
    */
   test.prop([fc.string({ minLength: 1, maxLength: 20 }), exportFormatArb])(
     "文件名应该以正确的扩展名结尾",
-    (pageName, format) => {
-      const fileName = exportUtils.generateFileName(pageName, format);
+    (pageName: unknown, format: unknown) => {
+      const typedPageName = pageName as string;
+      const typedFormat = format as ExportFormat;
+      const fileName = exportUtils.generateFileName(typedPageName, typedFormat);
 
-      expect(fileName.endsWith(`.${format}`)).toBe(true);
+      expect(fileName.endsWith(`.${typedFormat}`)).toBe(true);
     },
   );
 
@@ -290,11 +315,13 @@ describe("文件名生成", () => {
    */
   test.prop([fc.string({ minLength: 1, maxLength: 20 }), exportFormatArb])(
     "文件名应该包含时间戳",
-    (pageName, format) => {
+    (pageName: unknown, format: unknown) => {
+      const typedPageName = pageName as string;
+      const typedFormat = format as ExportFormat;
       const timestamp = new Date("2025-01-11T12:00:00Z");
       const fileName = exportUtils.generateFileName(
-        pageName,
-        format,
+        typedPageName,
+        typedFormat,
         timestamp,
       );
 

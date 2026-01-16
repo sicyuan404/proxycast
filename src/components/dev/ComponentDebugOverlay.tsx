@@ -406,6 +406,7 @@ function getReactFiberInfo(
 
 /**
  * 从 Fiber 节点向下查找最近的 DOM 元素
+ * 递归遍历子节点，找到第一个 DOM 元素
  */
 function findDomElement(fiber: FiberNode | null): HTMLElement | null {
   if (!fiber) return null;
@@ -413,6 +414,14 @@ function findDomElement(fiber: FiberNode | null): HTMLElement | null {
   // 如果当前节点有 stateNode 且是 DOM 元素
   if (fiber.stateNode instanceof HTMLElement) {
     return fiber.stateNode;
+  }
+
+  // 递归查找子节点
+  let child = fiber.child;
+  while (child) {
+    const result = findDomElement(child);
+    if (result) return result;
+    child = child.sibling;
   }
 
   return null;
@@ -435,7 +444,18 @@ function getParentComponentInfo(
     while (fiber) {
       if (isValidUserComponent(fiber)) {
         // 尝试找到父组件对应的 DOM 元素
-        const parentElement = findDomElement(fiber) || fallbackElement;
+        let parentElement = findDomElement(fiber);
+
+        // 如果找不到父组件的 DOM 元素，使用子元素的父元素
+        if (!parentElement && fallbackElement.parentElement) {
+          parentElement = fallbackElement.parentElement;
+        }
+
+        // 如果还是找不到，使用 fallbackElement
+        if (!parentElement) {
+          parentElement = fallbackElement;
+        }
+
         return extractFiberInfo(fiber, parentElement, x, y);
       }
       fiber = fiber.return;
@@ -446,6 +466,60 @@ function getParentComponentInfo(
     // 发生错误时返回 null，避免白屏
     return null;
   }
+}
+
+/**
+ * 获取完整的组件层级路径（从当前组件到根组件）
+ */
+function getComponentHierarchy(
+  currentFiber: FiberNode | unknown,
+  currentElement: HTMLElement,
+  x: number,
+  y: number,
+): ComponentInfo[] {
+  const hierarchy: ComponentInfo[] = [];
+  
+  try {
+    if (!currentFiber) return hierarchy;
+
+    // 添加当前组件
+    if (currentFiber && isValidUserComponent(currentFiber as FiberNode)) {
+      const currentInfo = extractFiberInfo(
+        currentFiber as FiberNode,
+        currentElement,
+        x,
+        y,
+      );
+      if (currentInfo) {
+        hierarchy.push(currentInfo);
+      }
+    }
+
+    // 遍历父组件
+    let fiber = (currentFiber as FiberNode).return;
+    while (fiber) {
+      if (isValidUserComponent(fiber)) {
+        let parentElement = findDomElement(fiber);
+        if (!parentElement && currentElement.parentElement) {
+          parentElement = currentElement.parentElement;
+        }
+        if (!parentElement) {
+          parentElement = currentElement;
+        }
+
+        const parentInfo = extractFiberInfo(fiber, parentElement, x, y);
+        if (parentInfo) {
+          hierarchy.push(parentInfo);
+          currentElement = parentElement;
+        }
+      }
+      fiber = fiber.return;
+    }
+  } catch {
+    // 发生错误时返回已收集的层级
+  }
+
+  return hierarchy;
 }
 
 /** 选中组件的持久高亮边框 */
@@ -517,6 +591,8 @@ function ComponentInfoPopup() {
   const { componentInfo, hideComponentInfo, showComponentInfo } =
     useComponentDebug();
   const [copiedField, setCopiedField] = useState<string | null>(null);
+  const [showHierarchyDropdown, setShowHierarchyDropdown] = useState(false);
+  const dropdownRef = React.useRef<HTMLDivElement>(null);
 
   // 使用 useMemo 缓存 propsEntries 计算结果 - 必须在所有条件返回之前调用
   const propsEntries = useMemo(() => {
@@ -525,6 +601,31 @@ function ComponentInfoPopup() {
       ([key]) => key !== "children",
     );
   }, [componentInfo?.props]);
+
+  // 计算组件层级路径
+  const hierarchy = useMemo(() => {
+    if (!componentInfo?.fiber || !componentInfo.element) return [];
+    return getComponentHierarchy(
+      componentInfo.fiber,
+      componentInfo.element,
+      componentInfo.x,
+      componentInfo.y,
+    );
+  }, [componentInfo?.fiber, componentInfo?.element, componentInfo?.x, componentInfo?.y]);
+
+  // 点击外部关闭下拉菜单
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowHierarchyDropdown(false);
+      }
+    };
+
+    if (showHierarchyDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [showHierarchyDropdown]);
 
   // 早期返回必须在所有 hooks 之后
   if (!componentInfo) return null;
@@ -553,6 +654,11 @@ function ComponentInfoPopup() {
     if (parentInfo) {
       showComponentInfo(parentInfo);
     }
+  };
+
+  const handleSelectHierarchyItem = (info: ComponentInfo) => {
+    showComponentInfo(info);
+    setShowHierarchyDropdown(false);
   };
 
   // 检查是否有父组件
@@ -587,6 +693,35 @@ function ComponentInfoPopup() {
             <X className="w-4 h-4" />
           </button>
         </div>
+
+        {/* 面包屑导航 */}
+        {hierarchy.length > 1 && (
+          <div className="px-3 py-2 border-b border-gray-200 bg-gray-50/50">
+            <div className="flex items-center gap-1 overflow-x-auto text-xs">
+              {hierarchy.slice().reverse().map((item, index) => {
+                const isLast = index === hierarchy.length - 1;
+                return (
+                  <React.Fragment key={index}>
+                    <button
+                      onClick={() => handleSelectHierarchyItem(item)}
+                      className={`truncate hover:text-blue-600 transition-colors ${
+                        isLast
+                          ? "font-medium text-blue-600"
+                          : "text-gray-600"
+                      }`}
+                      title={item.name}
+                    >
+                      {item.name}
+                    </button>
+                    {!isLast && (
+                      <span className="text-gray-400 shrink-0">›</span>
+                    )}
+                  </React.Fragment>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* 内容区域 */}
         <div className="p-3 space-y-3">
@@ -694,17 +829,55 @@ function ComponentInfoPopup() {
         </div>
 
         {/* 底部操作栏 */}
-        <div className="px-3 py-2 border-t border-gray-200 rounded-b-lg bg-gray-50 flex items-center justify-between">
+        <div className="px-3 py-2 border-t border-gray-200 rounded-b-lg bg-gray-50 flex items-center justify-between relative">
           <p className="text-[10px] text-gray-400">按 Esc 关闭</p>
-          {hasParent && (
-            <button
-              onClick={handleSelectParent}
-              className="flex items-center gap-1 px-2 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
-            >
-              <ChevronUp className="w-3 h-3" />
-              选择父组件
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            {hierarchy.length > 1 && (
+              <div className="relative" ref={dropdownRef}>
+                <button
+                  onClick={() => setShowHierarchyDropdown(!showHierarchyDropdown)}
+                  className="flex items-center gap-1 px-2 py-1 text-xs bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors"
+                >
+                  <Layers className="w-3 h-3" />
+                  层级树
+                </button>
+                {/* 下拉菜单 */}
+                {showHierarchyDropdown && (
+                  <div className="absolute bottom-full right-0 mb-2 w-64 bg-white border border-gray-200 rounded-lg shadow-xl max-h-64 overflow-auto z-[100000]">
+                    <div className="p-2">
+                      <div className="text-xs text-gray-500 mb-2">组件层级（点击跳转）</div>
+                      {hierarchy.slice().reverse().map((item, index) => (
+                        <button
+                          key={index}
+                          onClick={() => handleSelectHierarchyItem(item)}
+                          className={`w-full text-left px-2 py-1.5 rounded text-xs flex items-center gap-2 hover:bg-gray-100 transition-colors ${
+                            index === hierarchy.length - 1
+                              ? "bg-blue-50 text-blue-600 font-medium"
+                              : "text-gray-700"
+                          }`}
+                        >
+                          <Layers className="w-3 h-3 shrink-0" />
+                          <span className="truncate">{item.name}</span>
+                          <span className="text-gray-400 text-[10px] shrink-0">
+                            L{item.depth}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+            {hasParent && (
+              <button
+                onClick={handleSelectParent}
+                className="flex items-center gap-1 px-2 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
+              >
+                <ChevronUp className="w-3 h-3" />
+                切换上一层
+              </button>
+            )}
+          </div>
         </div>
       </div>
       {/* 选中高亮边框 - 渲染在弹窗外部 */}
@@ -715,11 +888,24 @@ function ComponentInfoPopup() {
 
 /** 调试交互处理 */
 function DebugInteractionHandler() {
-  const { enabled, showComponentInfo, hideComponentInfo } = useComponentDebug();
+  const { enabled, showComponentInfo, hideComponentInfo, componentInfo } = useComponentDebug();
   const [altPressed, setAltPressed] = useState(false);
   const [hoveredElement, setHoveredElement] = useState<HTMLElement | null>(
     null,
   );
+
+  // 添加/移除全局调试样式类
+  useEffect(() => {
+    if (enabled) {
+      document.body.classList.add("component-debug-mode");
+    } else {
+      document.body.classList.remove("component-debug-mode");
+    }
+
+    return () => {
+      document.body.classList.remove("component-debug-mode");
+    };
+  }, [enabled]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -782,34 +968,41 @@ function DebugInteractionHandler() {
     const handleClick = (e: MouseEvent) => {
       try {
         const target = e.target as HTMLElement;
+        const isPopupClick = target.closest(".component-debug-popup");
 
-        if (!target.closest(".component-debug-popup")) {
-          if (!e.altKey) {
-            hideComponentInfo();
-            return;
-          }
+        if (!isPopupClick) {
+          if (e.altKey) {
+            // 按住 Alt 键：显示组件信息
+            e.preventDefault();
+            e.stopPropagation();
 
-          e.preventDefault();
-          e.stopPropagation();
-
-          const info = getReactFiberInfo(
-            target,
-            e.clientX + 10,
-            e.clientY + 10,
-          );
-          if (info) {
-            showComponentInfo(info);
+            const info = getReactFiberInfo(
+              target,
+              e.clientX + 10,
+              e.clientY + 10,
+            );
+            if (info) {
+              showComponentInfo(info);
+            } else {
+              showComponentInfo({
+                name: "DOM Element",
+                filePath: "非 React 组件",
+                props: {},
+                depth: 0,
+                tagName: target.tagName || "UNKNOWN",
+                x: e.clientX + 10,
+                y: e.clientY + 10,
+                element: target,
+              });
+            }
           } else {
-            showComponentInfo({
-              name: "DOM Element",
-              filePath: "非 React 组件",
-              props: {},
-              depth: 0,
-              tagName: target.tagName || "UNKNOWN",
-              x: e.clientX + 10,
-              y: e.clientY + 10,
-              element: target,
-            });
+            // 没有按住 Alt 键
+            // 如果有组件信息弹窗显示，隐藏它
+            if (componentInfo) {
+              hideComponentInfo();
+            }
+            // 让事件正常传播，不影响其他组件的点击行为
+            return;
           }
         }
       } catch {
@@ -820,8 +1013,9 @@ function DebugInteractionHandler() {
 
     document.addEventListener("click", handleClick, true);
     return () => document.removeEventListener("click", handleClick, true);
-  }, [enabled, showComponentInfo, hideComponentInfo]);
+  }, [enabled, showComponentInfo, hideComponentInfo, componentInfo]);
 
+  // 只有在 Alt 按下且有悬浮元素时才显示高亮
   if (!altPressed || !hoveredElement) return null;
 
   // 安全获取元素边界，如果元素已被移除则返回 null
@@ -844,9 +1038,10 @@ function DebugInteractionHandler() {
         top: rect.top,
         width: rect.width,
         height: rect.height,
-        outline: `2px solid ${DEBUG_CONFIG.HOVER_HIGHLIGHT_COLOR}`,
+        outline: `3px solid ${DEBUG_CONFIG.HOVER_HIGHLIGHT_COLOR}`,
         outlineOffset: "-2px",
         backgroundColor: DEBUG_CONFIG.HOVER_HIGHLIGHT_BG,
+        boxShadow: `0 0 10px ${DEBUG_CONFIG.HOVER_HIGHLIGHT_COLOR}`,
       }}
     />
   );
@@ -874,6 +1069,35 @@ export function ComponentDebugOverlay() {
   // 使用错误边界包装，防止任何错误导致白屏
   return (
     <DebugErrorBoundary>
+      {/* 全局调试样式 */}
+      <style>{`
+        /* 组件调试模式：显示所有组件边框 */
+        body.component-debug-mode * {
+          outline: 1px solid rgba(156, 163, 175, 0.3) !important;
+          outline-offset: -1px !important;
+        }
+
+        /* 调试模式下，调试覆盖层和弹窗不受影响 */
+        body.component-debug-mode .component-debug-popup *,
+        body.component-debug-mode [class*="fixed"][style*="z-index"],
+        body.component-debug-mode [style*="z-index"] {
+          outline: none !important;
+        }
+
+        /* 调试模式下，输入框和按钮使用不同的边框颜色 */
+        body.component-debug-mode input,
+        body.component-debug-mode textarea,
+        body.component-debug-mode button {
+          outline-color: rgba(59, 130, 246, 0.4) !important;
+        }
+
+        /* 调试模式下，文本节点使用浅色边框 */
+        body.component-debug-mode p,
+        body.component-debug-mode span,
+        body.component-debug-mode div {
+          outline-color: rgba(156, 163, 175, 0.2) !important;
+        }
+      `}</style>
       <SafeDebugContent />
     </DebugErrorBoundary>
   );

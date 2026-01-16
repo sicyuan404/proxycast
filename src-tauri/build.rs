@@ -1,4 +1,7 @@
 fn main() {
+    // 强制使用 OpenSSL vendored 版本，避免依赖系统 OpenSSL
+    println!("cargo:rustc-env=OPENSSL_NO_VENDOR=0");
+
     // tauri::generate_context! 在编译期会校验 `frontendDist` 路径是否存在。
     // 开发/CI 场景下可能只跑 `cargo check/test` 而未先构建前端，从而导致宏 panic。
     // 这里提前创建配置中的 `../dist` 目录，避免无关的编译阻塞。
